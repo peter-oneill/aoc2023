@@ -11,14 +11,14 @@ trait Solver {
             std::fs::read_to_string(format!("src/d{}/input.txt", self.day_number())).unwrap();
         let lines = input_text.lines();
 
-        let part1_soln = Self::part1(lines.clone());
-        let part2_soln = Self::part2(lines);
+        let part1_soln = self.part1(lines.clone());
+        let part2_soln = self.part2(lines);
 
         format!("part 1: {}, part 2: {}", part1_soln, part2_soln)
     }
 
-    fn part1(lines: Lines) -> String;
-    fn part2(lines: Lines) -> String;
+    fn part1(&self, lines: Lines) -> String;
+    fn part2(&self, lines: Lines) -> String;
 }
 
 fn main() {
@@ -31,9 +31,10 @@ fn main() {
     }
 }
 
-fn get_solver_from_day(day: u32) -> impl Solver {
+fn get_solver_from_day(day: u32) -> Box<dyn Solver> {
     match day {
-        1 => Solver1 {},
+        1 => Box::new(Solver1 {}),
+        2 => Box::new(Solver2 {}),
         _ => panic!("Unknown solver"),
     }
 }

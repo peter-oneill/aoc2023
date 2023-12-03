@@ -9,7 +9,7 @@ impl Solver for Solver1 {
         1
     }
 
-    fn part1(input_lines: Lines) -> String {
+    fn part1(&self, input_lines: Lines) -> String {
         let mut total = 0;
 
         for line in input_lines {
@@ -27,7 +27,7 @@ impl Solver for Solver1 {
         total.to_string()
     }
 
-    fn part2(input_lines: Lines) -> String {
+    fn part2(&self, input_lines: Lines) -> String {
         let mut total = 0;
 
         for line in input_lines {
@@ -95,7 +95,7 @@ mod tests {
 pqr3stu8vwx
 a1b2c3d4e5f
 treb7uchet";
-        assert_eq!(super::Solver1::part1(sample_input.lines()), "142");
+        assert_eq!(super::Solver1.part1(sample_input.lines()), "142");
     }
     #[test]
     fn part2() {
@@ -106,6 +106,6 @@ xtwone3four
 4nineeightseven2
 zoneight234
 7pqrstsixteen";
-        assert_eq!(super::Solver1::part2(sample_input.lines()), "281");
+        assert_eq!(super::Solver1.part2(sample_input.lines()), "281");
     }
 }
