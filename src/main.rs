@@ -1,6 +1,8 @@
 mod d1;
+mod d2;
 
 use crate::d1::Solver1;
+use crate::d2::Solver2;
 use std::{env, str::Lines};
 
 trait Solver {
