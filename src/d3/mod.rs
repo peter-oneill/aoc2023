@@ -163,7 +163,7 @@ mod tests {
     }
     #[test]
     fn part2() {
-        let _sample_input = "467..114..
+        let sample_input = "467..114..
 ...*......
 ..35..633.
 ......#...
@@ -173,6 +173,6 @@ mod tests {
 ......755.
 ...$.*....
 .664.598..";
-        // assert_eq!(super::Solver3.part2(sample_input.lines()), "0");
+        assert_eq!(super::Solver3.part2(sample_input.lines()), "");
     }
 }
