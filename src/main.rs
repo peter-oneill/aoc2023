@@ -39,7 +39,7 @@ fn get_solver_from_day(day: u32) -> Box<dyn Solver> {
     match day {
         1 => Box::new(Solver1 {}),
         2 => Box::new(Solver2 {}),
-        2 => Box::new(Solver3 {}),
+        3 => Box::new(Solver3 {}),
         _ => panic!("Unknown solver"),
     }
 }
