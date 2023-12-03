@@ -43,11 +43,11 @@ impl LineState {
         match self {
             Self::Number(n) => match c_type {
                 CharType::Numeric(d) => (Self::Number(n.append_digit(d)), None),
-                CharType::Dot | CharType::Symbol => (Self::Other, Some(n)),
+                CharType::Dot | CharType::Symbol | CharType::Star => (Self::Other, Some(n)),
             },
             Self::Other => match c_type {
                 CharType::Numeric(d) => (Self::Number(Number::new(ix, d)), None),
-                CharType::Dot | CharType::Symbol => (Self::Other, None),
+                CharType::Dot | CharType::Symbol | CharType::Star => (Self::Other, None),
             },
         }
     }
@@ -56,6 +56,7 @@ impl LineState {
 #[derive(PartialEq, Debug)]
 enum CharType {
     Numeric(u32),
+    Star,
     Symbol,
     Dot,
 }
@@ -64,6 +65,7 @@ impl CharType {
     fn from_char(c: &char) -> CharType {
         match c {
             '0'..='9' => CharType::Numeric(c.to_digit(10).unwrap()),
+            '*' => CharType::Star,
             '.' => CharType::Dot,
             _ => CharType::Symbol,
         }
@@ -125,9 +127,61 @@ impl Solver for Solver3 {
         sum.to_string()
     }
 
-    fn part2(&self, _input_lines: Lines) -> String {
-        // for line in input_lines {}
-        "".to_string()
+    fn part2(&self, input_lines: Lines) -> String {
+        let mut all_numbers: Vec<Vec<Number>> = Vec::new();
+        let mut all_char_types: Vec<Vec<CharType>> = Vec::new();
+
+        for line in input_lines {
+            let mut line_numbers: Vec<Number> = Vec::new();
+            let mut line_char_types: Vec<CharType> = Vec::new();
+            let mut line_state = LineState::Other;
+
+            for (ix, c) in line.char_indices() {
+                let (l, completed_number) = line_state.append(ix, c);
+                line_state = l;
+
+                if let Some(n) = completed_number {
+                    line_numbers.push(n)
+                }
+
+                line_char_types.push(CharType::from_char(&c));
+            }
+
+            // Handle the case where a number finishes at the end of a line
+            if let LineState::Number(n) = line_state {
+                line_numbers.push(n);
+            }
+
+            all_numbers.push(line_numbers);
+            all_char_types.push(line_char_types);
+        }
+
+        let mut sum = 0;
+        let num_lines = all_char_types.len();
+        let line_length = all_char_types[0].len();
+
+        for (line_num, c_types) in all_char_types.iter().enumerate() {
+            let start_line_ix = max(line_num, 1) - 1;
+            let end_line_ix = min(line_num + 1, num_lines - 1);
+
+            for (c_ix, c) in c_types.iter().enumerate() {
+                if let CharType::Star = c {
+                    let mut touching_nums = Vec::new();
+                    for line_ix in start_line_ix..=end_line_ix {
+                        touching_nums.extend(find_all_touching_numbers(
+                            c_ix,
+                            &all_numbers[line_ix],
+                            line_length,
+                        ));
+                    }
+                    if touching_nums.len() == 2 {
+                        sum += touching_nums[0] * touching_nums[1];
+                    }
+                }
+            }
+        }
+
+        sum.to_string()
     }
 }
 
@@ -136,12 +190,27 @@ fn find_touching_symbols(num: &Number, symbols: &Vec<CharType>, line_length: usi
     let end_ix = min(num.end + 1, line_length - 1);
 
     for ix in start_ix..=end_ix {
-        if symbols[ix] == CharType::Symbol {
+        if symbols[ix] == CharType::Symbol || symbols[ix] == CharType::Star {
             return true;
         }
     }
 
     false
+}
+
+fn find_all_touching_numbers(c_ix: usize, numbers: &Vec<Number>, line_length: usize) -> Vec<u32> {
+    let mut touching_nums = Vec::new();
+
+    let start_ix = max(c_ix, 1) - 1;
+    let end_ix = min(c_ix + 1, line_length - 1);
+
+    for num in numbers {
+        if num.start <= end_ix && num.end >= start_ix {
+            touching_nums.push(num.value);
+        }
+    }
+
+    touching_nums
 }
 
 #[cfg(test)]
@@ -173,6 +242,6 @@ mod tests {
 ......755.
 ...$.*....
 .664.598..";
-        assert_eq!(super::Solver3.part2(sample_input.lines()), "");
+        assert_eq!(super::Solver3.part2(sample_input.lines()), "467835");
     }
 }
