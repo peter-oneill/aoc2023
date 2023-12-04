@@ -1,10 +1,13 @@
 mod d1;
 mod d2;
 mod d3;
+mod d4;
 
 use crate::d1::Solver1;
 use crate::d2::Solver2;
 use crate::d3::Solver3;
+use crate::d4::Solver4;
+
 use std::{env, str::Lines};
 
 trait Solver {
@@ -40,6 +43,7 @@ fn get_solver_from_day(day: u32) -> Box<dyn Solver> {
         1 => Box::new(Solver1 {}),
         2 => Box::new(Solver2 {}),
         3 => Box::new(Solver3 {}),
+        4 => Box::new(Solver4 {}),
         _ => panic!("Unknown solver"),
     }
 }
