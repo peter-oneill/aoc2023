@@ -21,7 +21,7 @@ trait Solver {
         let part1_soln = self.part1(lines.clone());
         let part2_soln = self.part2(lines);
 
-        format!("part 1: {}, part 2: {}", part1_soln, part2_soln)
+        format!("part 1: {},\tpart 2: {}", part1_soln, part2_soln)
     }
 
     fn part1(&self, lines: Lines) -> String;
