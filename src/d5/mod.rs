@@ -11,6 +11,12 @@ struct Mapping {
     delta: i64,
 }
 
+#[derive(Debug)]
+struct SeedRange {
+    start: i64,
+    count: i64,
+}
+
 impl Solver for Solver5 {
     fn day_number(&self) -> u32 {
         5
@@ -80,20 +86,18 @@ impl Solver for Solver5 {
 
         let seeds = input_lines.next().unwrap().split(':').last().unwrap();
 
-        let seed_ranges: Vec<i64> = seeds
+        let seeds: Vec<i64> = seeds
             .split(' ')
             .filter(|s| !s.is_empty())
             .map(|s| s.parse::<i64>().unwrap())
             .collect();
 
-        let mut seeds: Vec<i64> = Vec::new();
+        let mut next_seed_ranges: Vec<SeedRange> = Vec::new();
 
-        for ix in 0..seed_ranges.len() / 2 {
-            let start_val = seed_ranges[2 * ix];
-            let count = seed_ranges[2 * ix + 1];
-            for d in 0..count {
-                seeds.push(start_val + d);
-            }
+        for ix in 0..seeds.len() / 2 {
+            let start = seeds[2 * ix];
+            let count = seeds[2 * ix + 1];
+            next_seed_ranges.push(SeedRange { start, count });
         }
 
         let mut map_num = 0;
@@ -120,26 +124,87 @@ impl Solver for Solver5 {
             maps[map_num - 1].push(new_map);
         }
 
-        let mut lowest: Option<i64> = None;
+        // let mut next_seed_ranges: Vec<SeedRange> = Vec::new(); ??
 
-        for seed in &mut seeds {
-            for map in &maps {
-                for mapping in map {
-                    if *seed >= mapping.from && *seed <= mapping.to {
-                        *seed += mapping.delta;
-                        break;
+        for map in maps {
+            let mut unmatched_seed_ranges = next_seed_ranges;
+            next_seed_ranges = Vec::new();
+            for mapping in &map {
+                let seed_ranges = unmatched_seed_ranges;
+                unmatched_seed_ranges = Vec::new();
+
+                for sr in seed_ranges {
+                    let sr_end = sr.start + sr.count - 1;
+                    if sr.start < mapping.from {
+                        if sr_end >= mapping.from {
+                            // there's an overlap
+
+                            let num_seeds = mapping.from - sr.start;
+
+                            // seeds before the mapping
+                            unmatched_seed_ranges.push(SeedRange {
+                                start: sr.start,
+                                count: num_seeds,
+                            });
+
+                            let mut remaining = sr.count - num_seeds;
+
+                            if sr_end > mapping.to {
+                                // there are some seeds after the matching set
+                                let num_seeds = sr_end - mapping.to;
+
+                                unmatched_seed_ranges.push(SeedRange {
+                                    start: mapping.to + 1,
+                                    count: num_seeds,
+                                });
+
+                                remaining -= num_seeds;
+                            }
+
+                            // rest of the range is in the mapping
+                            next_seed_ranges.push(SeedRange {
+                                start: mapping.from + mapping.delta,
+                                count: remaining,
+                            });
+                        } else {
+                            // no overlap
+                            unmatched_seed_ranges.push(sr);
+                        }
+                    } else if sr.start <= mapping.to {
+                        // some overlap
+
+                        let mut remaining = sr.count;
+
+                        if sr_end > mapping.to {
+                            // there are some seeds after the matching set
+                            let num_seeds = sr_end - mapping.to;
+
+                            unmatched_seed_ranges.push(SeedRange {
+                                start: mapping.to + 1,
+                                count: num_seeds,
+                            });
+
+                            remaining -= num_seeds;
+                        }
+
+                        // rest of the range is in the mapping
+                        next_seed_ranges.push(SeedRange {
+                            start: sr.start + mapping.delta,
+                            count: remaining,
+                        });
+                    } else {
+                        // no overlap
+                        unmatched_seed_ranges.push(sr);
                     }
                 }
             }
 
-            if let Some(v) = lowest {
-                if *seed < v {
-                    lowest = Some(*seed);
-                }
-            } else {
-                lowest = Some(*seed);
-            }
+            // handle seed ranges that intersected no mappings
+            next_seed_ranges.append(&mut unmatched_seed_ranges);
         }
+
+        let values = next_seed_ranges.iter().map(|sr| sr.start);
+        let lowest = values.min();
 
         lowest.unwrap().to_string()
     }
