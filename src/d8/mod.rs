@@ -1,18 +1,9 @@
-use num::{integer, traits::AsPrimitive};
-use std::{cell::RefCell, collections::HashMap, fmt::Display, str::Lines, sync::Arc};
+use num::integer;
+use std::{collections::HashMap, str::Lines};
 
 use crate::Solver;
 
 pub struct Solver8;
-
-#[derive(PartialEq, Eq, Debug)]
-}
-
-    }
-}
-
-    }
-}
 
 impl Solver for Solver8 {
     fn day_number(&self) -> u32 {
@@ -66,36 +57,26 @@ impl Solver for Solver8 {
         loop {
             for c in &directions {
                 steps += 1;
-                let mut num_to_complete = num_locations;
 
                 for (ix, n) in current_nodes.iter_mut().enumerate() {
                     *n = match c {
-                        'L' => {
-                            network[n].0
-                        }
-                        'R' => {
-                            network[n].1
-                        }
+                        'L' => network[n].0,
+                        'R' => network[n].1,
                         _ => panic!("Unknown direction"),
                     };
                     if n.chars().nth(2).unwrap() == 'Z' {
                         if !found_locs.contains_key(&ix) {
+                            found_locs.insert(ix, steps);
                             if found_locs.len() == num_locations {
                                 let mut vals = found_locs.values();
-                                let first = vals.next().unwrap().clone();
-                                let mut lcm = first;
+                                let mut lcm = vals.next().unwrap().clone();
                                 for s in vals {
                                     lcm = integer::lcm(lcm, s.clone());
                                 }
                                 return lcm.to_string();
                             }
                         }
-
-                        num_to_complete -= 1;
                     }
-                }
-                if num_to_complete == 0 {
-                    return steps.to_string();
                 }
             }
         }
