@@ -18,9 +18,9 @@ impl Solver for Solver11 {
 }
 
 fn solve_with_expansion_factor(input_lines: Lines, factor: i64) -> String {
-    let cloned_lines: Vec<&str> = input_lines.clone().collect();
-    let num_columns = cloned_lines[0].chars().count();
-    let num_rows = cloned_lines.len();
+    let lines_vec: Vec<&str> = input_lines.collect();
+    let num_columns = lines_vec[0].chars().count();
+    let num_rows = lines_vec.len();
 
     let mut galaxies_on_single_row: Vec<char> = vec!['.'; num_columns];
     let mut galaxies_on_single_column: Vec<char> = vec!['.'; num_rows];
@@ -30,7 +30,7 @@ fn solve_with_expansion_factor(input_lines: Lines, factor: i64) -> String {
     // 1:  for each found galaxy:
     // - add to the list of galaxies
     // - mark the row and column as having a galaxy
-    for (y, row) in input_lines.enumerate() {
+    for (y, row) in lines_vec.iter().enumerate() {
         for (x, c) in row.char_indices() {
             if c == '#' {
                 galaxies.push((x.try_into().unwrap(), y.try_into().unwrap()));
