@@ -1,10 +1,10 @@
-use num::complex::ComplexFloat;
-
 use crate::Solver;
 use core::panic;
-use std::str::Lines;
+use std::{collections::HashMap, str::Lines};
 
 pub struct Solver12;
+
+static mut indent: usize = 0;
 
 impl Solver for Solver12 {
     fn day_number(&self) -> u32 {
@@ -12,80 +12,47 @@ impl Solver for Solver12 {
     }
 
     fn part1(&self, input_lines: Lines) -> String {
+        // naive brute force will take too long.  Instead need some state to limit the search space
         let mut sum = 0;
         let number_matcher = regex::Regex::new(r"\d+").unwrap();
 
-        let mut all_possible_lines = Vec::new();
-
-        let max_line_len = input_lines
-            .clone()
-            .map(|line| line.split(" ").next().unwrap().len())
-            .max()
-            .unwrap()
-            .try_into()
-            .unwrap();
-
-        for ii in 0..2_u64.pow(max_line_len) {
-            let mut line = String::new();
-            for jj in 0..max_line_len {
-                if ii & (1 << jj) != 0 {
-                    line.push('#');
-                } else {
-                    line.push('.');
-                }
-            }
-            all_possible_lines.push(line);
-        }
-
         for line in input_lines {
-            let (whole_line, numbers) = line.split_once(" ").unwrap();
+            let (spring_row, numbers) = line.split_once(" ").unwrap();
+            //    let spring_row = format!(
+            //        "{}?{}?{}?{}?{}",
+            //        springs, springs, springs, springs, springs
+            //    );
+            //    let numbers = format!(
+            //        "{},{},{},{},{}",
+            //        numbers, numbers, numbers, numbers, numbers
+            //    );
 
-            // First build a regex to match this line against test lines
-            let whole_line_matcher =
-                regex::Regex::new(&whole_line.replace(".", r"\.").replace("?", "[.#]")).unwrap();
+            let group_sizes: Vec<usize> = number_matcher
+                .find_iter(&numbers)
+                .map(|n| n.as_str().parse::<usize>().unwrap())
+                .collect();
 
-            // Now build a matcher for the working/not working combinations in the line
-            let mut needle = r"^\.*".to_string();
+            let mut match_cache = MatchCache {
+                matches: HashMap::new(),
+            };
 
-            let mut number_matches = number_matcher.find_iter(numbers);
-
-            if let Some(number) = number_matches.next() {
-                needle.push_str(&format!("#{{{}}}", number.as_str()));
-            }
-            for number in number_matches {
-                needle.push_str(r"\.+");
-                needle.push_str(&format!("#{{{}}}", number.as_str()));
-            }
-            needle.push_str(r"\.*$");
-            let finished_needle = regex::Regex::new(&needle).unwrap();
-            // println!("line: {}", line);
-
-            // Now loop through each possible line to find matches
-            let line_len = whole_line.len();
-            let num_possibilities = 2_usize.pow(line_len.try_into().unwrap());
-
-            for possible_line in all_possible_lines.split_at(num_possibilities).0 {
-                let part_to_match = &possible_line[0..whole_line.len()];
-
-                if !whole_line_matcher.is_match(part_to_match) {
-                    continue;
-                }
-
-                if finished_needle.is_match(part_to_match) {
-                    // println!("match {}, {}", line, possible_line);
-                    sum += 1;
-                }
-            }
+            let matches_this_row = match_cache.can_start_group_at_or_after_position(
+                &spring_row.chars().collect::<Vec<char>>(),
+                &group_sizes,
+            );
+            // unsafe { println!("{n:>width$}matches_this_row: {}", matches_this_row, width=indent, n=0); }
+            sum += matches_this_row;
+            // break;
         }
         sum.to_string()
     }
 
     fn part2(&self, input_lines: Lines) -> String {
         // naive brute force will take too long.  Instead need some state to limit the search space
-        let mut sum = 0;
+        let mut sum: u64 = 0;
         let number_matcher = regex::Regex::new(r"\d+").unwrap();
 
-        for line in input_lines {
+        for (ix, line) in input_lines.enumerate() {
             let (springs, numbers) = line.split_once(" ").unwrap();
             let spring_row = format!(
                 "{}?{}?{}?{}?{}",
@@ -101,147 +68,342 @@ impl Solver for Solver12 {
                 .map(|n| n.as_str().parse::<usize>().unwrap())
                 .collect();
 
-            let matches_this_row = can_start_group_at_or_after_position(
+            let mut match_cache = MatchCache {
+                matches: HashMap::new(),
+            };
+
+            let matches_this_row = match_cache.can_start_group_at_or_after_position(
                 &spring_row.chars().collect::<Vec<char>>(),
                 &group_sizes,
             );
-            // println!("matches_this_row: {}", matches_this_row);
-            sum += matches_this_row;
+            // unsafe { println!("{n:>width$}row {} matches_this_row: {}", ix, matches_this_row, width=indent, n=0); }
+            sum += matches_this_row as u64;
             // break;
         }
         sum.to_string()
     }
 }
 
-fn can_start_group_at_or_after_position(
-    remaining_springs: &[char],
-    remaining_groups: &[usize],
-) -> u32 {
-    print!("{:?}, {:?} ", remaining_springs, remaining_groups);
-    let remaining_broken_spring_count = remaining_springs.iter().filter(|c| **c == '#').count();
-
-    // There are no more groups to match
-    if remaining_groups.len() == 0 {
-        // If there are no more broken springs, return one match variant
-        if remaining_broken_spring_count == 0 {
-            // println!(" no more broken springs");
-            return 1;
-        } else {
-            // There are more broken springs - whoops!  can't match
-            // println!(" more broken springs - whoops can't match");
-
-            return 0;
-        }
-    }
-
-    // There's not enough space to match just the next group
-    if remaining_springs.len() < remaining_groups[0] {
-        // println!(" not enough space to match just the next group");
-
-        return 0;
-    }
-
-    // Do some checks to shortcut recursion when it's bound to fail
-
-    // There are too many broken springs in the row, to match the remaining groups
-    if remaining_broken_spring_count > remaining_groups.iter().sum() {
-        // println!(" too many broken in row");
-
-        return 0;
-    }
-
-    // There are more groups to match, but not enough springs (of any type) to match them
-    if remaining_springs.len() < remaining_groups.iter().map(|n| n + 1).sum::<usize>() - 1 {
-        // println!(
-        // "not enough springs of any type to match {} {}",
-        // remaining_springs.len(),
-        // remaining_groups.iter().map(|n| n + 1).sum::<usize>()
-        // );
-
-        return 0;
-    }
-
-    // There are more groups to match, but not enough springs of the right type to match them
-    if remaining_springs.iter().filter(|c| **c != '.').count() < remaining_groups.iter().sum() {
-        // println!("not enough springs of the right type to match");
-        return 0;
-    }
-
-    let group_size = remaining_groups[0];
-
-    match remaining_springs[0] {
-        '.' => {
-            // Can't start exactly here - can we start at the next position?
-
-            // println!("can't start exactly here - can we start at the next position?");
-            return can_start_group_at_or_after_position(&remaining_springs[1..], remaining_groups);
-        }
-        '#' => {
-            // must start a group here if we can
-            if remaining_springs.len() == group_size {
-                // println!("exact size match - no more groups to check");
-                // Exact size match - no more groups to check
-                return 1;
-            }
-
-            if remaining_springs[0..group_size].iter().any(|c| *c == '.') {
-                // Working springs in the way
-                // println!("working springs in the way");
-                return 0;
-            }
-
-            if remaining_springs[group_size] == '#' {
-                // We can't match here, because there would be too many broken springs
-
-                // println!("too many broken springs");
-                return 0;
-            }
-
-            // OK - let's try putting the next group here.
-            return can_start_group_at_or_after_position(
-                &remaining_springs[group_size + 1..],
-                &remaining_groups[1..],
-            );
-        }
-        '?' => {
-            // Can choose whether to start a group here or not
-
-            if remaining_springs.len() == group_size {
-                // Exact size match - no more groups to check
-                // println!("exact size match - no more groups to check");
-                return 1;
-            }
-            if remaining_springs[0..group_size].iter().any(|c| *c == '.') {
-                // println!("working springs in the way");
-                // Working springs in the way
-                return can_start_group_at_or_after_position(
-                    &remaining_springs[1..],
-                    &remaining_groups,
-                );
-            }
-
-            if remaining_springs[group_size] == '#' {
-                // println!("too many broken springs");
-                // We can't match exactly here, because there would be too many broken springs
-                return can_start_group_at_or_after_position(
-                    &remaining_springs[1..],
-                    &remaining_groups,
-                );
-            }
-
-            // Can start here, or could not.
-            return can_start_group_at_or_after_position(
-                &remaining_springs[group_size + 1..],
-                &remaining_groups[1..],
-            ) + can_start_group_at_or_after_position(
-                &remaining_springs[1..],
-                &remaining_groups,
-            );
-        }
-        _ => panic!("Unexpected character {}", remaining_springs[0]),
-    }
+struct MatchCache {
+    matches: HashMap<(usize, usize), u64>,
 }
 
+impl MatchCache {
+    fn can_start_group_at_or_after_position(
+        &mut self,
+        remaining_springs: &[char],
+        remaining_groups: &[usize],
+    ) -> u64 {
+        // currently this recurses even when we've previously verified the same end of a row can match
+        // we could us a cache instead?
+        if let Some(number) = self
+            .matches
+            .get(&(remaining_springs.len(), remaining_groups.len()))
+        {
+            return *number;
+        }
+        unsafe {
+            indent += 2;
+        }
+        unsafe {
+            print!("{n:>width$}1", width = indent, n = 0);
+        }
+        for c in remaining_springs {
+            print!("{}", c);
+        }
+        println!(", {:?} ", remaining_groups);
+        let remaining_broken_spring_count = remaining_springs.iter().filter(|c| **c == '#').count();
+
+        // There are no more groups to match
+        if remaining_groups.len() == 0 {
+            // If there are no more broken springs, return one match variant
+            if remaining_broken_spring_count == 0 {
+                unsafe {
+                    println!("{n:>width$}2 no more broken springs", width = indent, n = 0);
+                }
+                unsafe {
+                    indent -= 2;
+                }
+                self.matches
+                    .insert((remaining_springs.len(), remaining_groups.len()), 1);
+                return 1;
+            } else {
+                // There are more broken springs - whoops!  can't match
+                unsafe {
+                    println!(
+                        "{n:>width$}3 more broken springs - whoops can't match",
+                        width = indent,
+                        n = 0
+                    );
+                }
+
+                unsafe {
+                    indent -= 2;
+                }
+                self.matches
+                    .insert((remaining_springs.len(), remaining_groups.len()), 0);
+                return 0;
+            }
+        }
+
+        // There's not enough space to match just the next group
+        if remaining_springs.len() < remaining_groups[0] {
+            unsafe {
+                println!(
+                    "{n:>width$}4 not enough space to match just the next group",
+                    width = indent,
+                    n = 0
+                );
+            }
+
+            unsafe {
+                indent -= 2;
+            }
+            self.matches
+                .insert((remaining_springs.len(), remaining_groups.len()), 0);
+            return 0;
+        }
+
+        // Do some checks to shortcut recursion when it's bound to fail
+
+        // There are too many broken springs in the row, to match the remaining groups
+        if remaining_broken_spring_count > remaining_groups.iter().sum() {
+            unsafe {
+                println!("{n:>width$}5 too many broken in row", width = indent, n = 0);
+            }
+
+            unsafe {
+                indent -= 2;
+            }
+            self.matches
+                .insert((remaining_springs.len(), remaining_groups.len()), 0);
+            return 0;
+        }
+
+        // There are more groups to match, but not enough springs (of any type) to match them
+        if remaining_springs.len() < remaining_groups.iter().map(|n| n + 1).sum::<usize>() - 1 {
+            // unsafe { println!( }
+            //     "not enough springs of any type to match {} {}",
+            //     remaining_springs.len(),
+            //     remaining_groups.iter().map(|n| n + 1).sum::<usize>()
+            // );
+            unsafe {
+                println!(
+                    "{n:>width$}6 not enough springs of any type to match",
+                    width = indent,
+                    n = 0
+                );
+            }
+            unsafe {
+                indent -= 2;
+            }
+            self.matches
+                .insert((remaining_springs.len(), remaining_groups.len()), 0);
+            return 0;
+        }
+
+        // There are more groups to match, but not enough springs of the right type to match them
+        if remaining_springs.iter().filter(|c| **c != '.').count() < remaining_groups.iter().sum() {
+            unsafe {
+                println!(
+                    "{n:>width$}7 not enough springs of the right type to match",
+                    width = indent,
+                    n = 0
+                );
+            }
+            unsafe {
+                indent -= 2;
+            }
+            self.matches
+                .insert((remaining_springs.len(), remaining_groups.len()), 0);
+            return 0;
+        }
+
+        let group_size = remaining_groups[0];
+
+        match remaining_springs[0] {
+            '.' => {
+                // Can't start exactly here - can we start at the next position?
+
+                unsafe {
+                    println!(
+                    "{n:>width$}8 can't start exactly here - can we start at the next position?",
+                    width = indent,
+                    n = 0
+                );
+                }
+                let val = self.can_start_group_at_or_after_position(
+                    &remaining_springs[1..],
+                    remaining_groups,
+                );
+                unsafe {
+                    indent -= 2;
+                }
+                self.matches
+                    .insert((remaining_springs.len(), remaining_groups.len()), val);
+                return val;
+            }
+            '#' => {
+                // must start a group here if we can
+                if remaining_springs.len() == group_size {
+                    unsafe {
+                        println!(
+                            "{n:>width$}9 exact size match - no more groups to check",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    // Exact size match - no more groups to check
+                    unsafe {
+                        indent -= 2;
+                    }
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), 1);
+                    return 1;
+                }
+
+                if remaining_springs[0..group_size].iter().any(|c| *c == '.') {
+                    // Working springs in the way
+                    unsafe {
+                        println!(
+                            "{n:>width$}10 working springs in the way",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    unsafe {
+                        indent -= 2;
+                    }
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), 0);
+                    return 0;
+                }
+
+                if remaining_springs[group_size] == '#' {
+                    // We can't match here, because there would be too many broken springs
+
+                    unsafe {
+                        println!(
+                            "{n:>width$}11 too many broken springs",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    unsafe {
+                        indent -= 2;
+                    }
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), 0);
+                    return 0;
+                }
+
+                unsafe {
+                    println!(
+                        "{n:>width$}12 put a group here and proceed",
+                        width = indent,
+                        n = 0
+                    );
+                }
+                // OK - let's try putting the next group here.
+                let val = self.can_start_group_at_or_after_position(
+                    &remaining_springs[group_size + 1..],
+                    &remaining_groups[1..],
+                );
+                unsafe {
+                    indent -= 2;
+                }
+                self.matches
+                    .insert((remaining_springs.len(), remaining_groups.len()), val);
+                return val;
+            }
+            '?' => {
+                // Can choose whether to start a group here or not
+
+                if remaining_springs.len() == group_size {
+                    // Exact size match - no more groups to check
+                    unsafe {
+                        println!(
+                            "{n:>width$}13 exact size match - no more groups to check",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    unsafe {
+                        indent -= 2;
+                    }
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), 1);
+                    return 1;
+                }
+                if remaining_springs[0..group_size].iter().any(|c| *c == '.') {
+                    unsafe {
+                        println!(
+                            "{n:>width$}14 working springs in the way",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    // Working springs in the way
+                    let val = self.can_start_group_at_or_after_position(
+                        &remaining_springs[1..],
+                        &remaining_groups,
+                    );
+                    unsafe {
+                        indent -= 2;
+                    }
+
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), val);
+                    return val;
+                }
+
+                if remaining_springs[group_size] == '#' {
+                    unsafe {
+                        println!(
+                            "{n:>width$}15 too many broken springs",
+                            width = indent,
+                            n = 0
+                        );
+                    }
+                    // We can't match exactly here, because there would be too many broken springs
+                    let val = self.can_start_group_at_or_after_position(
+                        &remaining_springs[1..],
+                        &remaining_groups,
+                    );
+                    unsafe {
+                        indent -= 2;
+                    }
+                    self.matches
+                        .insert((remaining_springs.len(), remaining_groups.len()), val);
+                    return val;
+                }
+
+                // Can start here, or could not.
+                unsafe {
+                    println!(
+                        "{n:>width$}16 can start here, or could not.  ",
+                        width = indent,
+                        n = 0
+                    );
+                }
+                let val = self.can_start_group_at_or_after_position(
+                    &remaining_springs[group_size + 1..],
+                    &remaining_groups[1..],
+                ) + self.can_start_group_at_or_after_position(
+                    &remaining_springs[1..],
+                    &remaining_groups,
+                );
+                unsafe {
+                    indent -= 2;
+                }
+                self.matches
+                    .insert((remaining_springs.len(), remaining_groups.len()), val);
+                return val;
+            }
+            _ => panic!("Unexpected character {}", remaining_springs[0]),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::Solver;
@@ -265,5 +427,14 @@ mod tests {
 ????.######..#####. 1,6,5
 ?###???????? 3,2,1";
         assert_eq!(super::Solver12.part2(sample_input.lines()), "525152");
+    }
+
+    #[test]
+    fn single_line_p1() {
+        super::Solver12.part1("..?.????#?????????? 1,1,1,1,1,4".lines());
+    }
+    #[test]
+    fn single_line_p2() {
+        super::Solver12.part2("..?.????#?????????? 1,1,1,1,1,4".lines());
     }
 }
