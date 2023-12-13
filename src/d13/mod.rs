@@ -1,6 +1,6 @@
 use crate::Solver;
 use itertools::Itertools;
-use std::{borrow::BorrowMut, collections::HashMap, fmt::Debug, str::Lines, vec};
+use std::{collections::HashMap, fmt::Debug, str::Lines, vec};
 pub struct Solver13;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -61,13 +61,13 @@ impl Solver for Solver13 {
             .collect();
 
         for node_map in node_maps {
-            println!("{:?}", node_map);
-            let symm_val = find_horiz_or_vert_sym_values(&node_map).next().unwrap();
-            if symm_val.1 == Dir::Vertical {
-                symmetry_sum += symm_val.0 * 100;
-            } else {
-                symmetry_sum += symm_val.0;
-            }
+            symmetry_sum += find_only_symmetry_values(&node_map).unwrap();
+            // let symm_val = find_only_symmetry_values(&node_map).unwrap();
+            // if symm_val.1 == Dir::Vertical {
+            //     symmetry_sum += symm_val.0 * 100;
+            // } else {
+            //     symmetry_sum += symm_val.0;
+            // }
         }
 
         symmetry_sum.to_string()
@@ -138,23 +138,34 @@ fn any_matches(node_map: &Vec<Vec<NodeVal>>, x: usize, y: usize) -> bool {
         .count()
         > 1
 }
+fn find_only_symmetry_values(node_map: &Vec<Vec<NodeVal>>) -> Option<usize> {
+    find_symmetry_values(node_map, |_| true)
+}
+
+fn find_symmetry_values<P>(node_map: &Vec<Vec<NodeVal>>, filter: P) -> Option<usize>
+where
+    P: FnMut(&(usize, Dir)) -> bool,
+{
+    find_horiz_or_vert_sym_values(node_map)
+        .filter(filter)
+        .map(
+            |(val, dir)| {
+                if dir == Dir::Vertical {
+                    val * 100
+                } else {
+                    val
+                }
+            },
+        )
+        .next()
+}
 
 fn find_new_symmetry_values(
     node_map: &Vec<Vec<NodeVal>>,
     orig_symmetry_value: (usize, Dir),
 ) -> Option<usize> {
-    let mut symmetry_values = find_horiz_or_vert_sym_values(node_map);
-    let new_symmetry = symmetry_values.find(|symm_val| *symm_val != orig_symmetry_value);
-
-    new_symmetry.map(
-        |(val, dir)| {
-            if dir == Dir::Vertical {
-                val * 100
-            } else {
-                val
-            }
-        },
-    )
+    let filter = |symm_val: &(usize, Dir)| *symm_val != orig_symmetry_value;
+    find_symmetry_values(node_map, filter)
 }
 
 fn find_horiz_or_vert_sym_values(
@@ -170,20 +181,23 @@ fn find_horiz_or_vert_sym_values(
         }
     }
 
-    let s = vec![
+    vec![
         find_symmetries(node_map, Dir::Vertical),
         find_symmetries(&translated_node_map, Dir::Horizontal),
-    ];
-    println!("{:?}", s);
-    s.into_iter().flatten()
+    ]
+    .into_iter()
+    .flatten()
 }
 
+fn eq_dist_from_symmetry_line(this_line: i32, other_line: i32, symmetry_start_line: i32) -> bool {
+    (this_line - symmetry_start_line) == (symmetry_start_line - 1 - other_line)
+}
 fn find_symmetries(node_map: &Vec<Vec<NodeVal>>, direction: Dir) -> Vec<(usize, Dir)> {
-    let mut vals: Vec<(usize, Dir)> = vec![];
+    let mut symmetries = vec![];
     let max_y = node_map.len() - 1;
     let mut lines_hash: HashMap<&Vec<NodeVal>, Vec<usize>> = HashMap::new();
 
-    let mut start_of_symmetry = None;
+    let mut start_of_symmetry: Option<usize> = None;
 
     for (ix, line) in node_map.iter().enumerate() {
         let matching = lines_hash.get_mut(line);
@@ -197,54 +211,26 @@ fn find_symmetries(node_map: &Vec<Vec<NodeVal>>, direction: Dir) -> Vec<(usize, 
                 let mut found_good_match = false;
 
                 for prev_match in matching.iter() {
-                    if let Some(start_point) = start_of_symmetry {
-                        if ix - start_point == start_point - 1 - *prev_match {
-                            // The lines are equal distances from the symmetry line
-                            found_good_match = true;
-
-                            if (ix == 0)
-                                || (*prev_match == 0)
-                                || (ix == max_y)
-                                || (*prev_match == max_y)
-                            {
-                                vals.push((start_of_symmetry.unwrap(), direction));
-                                start_of_symmetry = None;
-                            }
-                            break;
+                    if !start_of_symmetry.is_some_and(|start| {
+                        eq_dist_from_symmetry_line(ix as i32, *prev_match as i32, start as i32)
+                    }) {
+                        // Either this is the first match, or the match was not a mirror image
+                        if ix != prev_match + 1 {
+                            // not a good starting match
+                            continue;
                         }
-                    }
 
-                    // we aren't in the middle of symmetry, or don't match our mirror image - check it's exactly the previous line that matches
-                    if ix == prev_match + 1 {
-                        // Yes!  start the symmetry
+                        // We'll only get to the here line if there were no other good matches, so restart the symmetry here
                         start_of_symmetry = Some(ix);
                     }
-                    // else {
-                    //     // No!  we've matched a line from some time back, but aren't in the middle of symmetry.  It therefore can't be a valid symmetry.  continue the loop
-                    //     continue;
-                    // }
 
-                    //     if (prev + 1 - prev_match + 1) != (prev_match + 1 - 1 - prev)
+                    found_good_match = true;
 
-                    // // if (ix as i32 - start_of_symmetry.unwrap() as i32)
-                    // //     != (start_of_symmetry.unwrap() as i32 - 1 - *prev_match as i32)
-                    // // {
-                    // //     if ix == prev_match + 1 {
-                    // //         // restart the symmetry!
-                    // //         start_of_symmetry = Some(ix);
-                    // //     } else {
-                    // //         // No!  we've matched a line from some time back, but aren't in the middle of symmetry.  It therefore can't be a valid symmetry.  continue the loop
-                    // //         continue;
-                    // //     }
-                    // // }
-
-                    // found_good_match = true;
-
-                    // if (ix == 0) || (*prev_match == 0) || (ix == max_y) || (*prev_match == max_y) {
-                    //     vals.push((start_of_symmetry.unwrap(), direction));
-                    //     start_of_symmetry = None;
-                    // }
-                    // break;
+                    if (ix == 0) || (*prev_match == 0) || (ix == max_y) || (*prev_match == max_y) {
+                        symmetries.push((start_of_symmetry.unwrap(), direction));
+                        start_of_symmetry = None;
+                    }
+                    break;
                 }
 
                 if !found_good_match {
@@ -254,7 +240,7 @@ fn find_symmetries(node_map: &Vec<Vec<NodeVal>>, direction: Dir) -> Vec<(usize, 
             }
         }
     }
-    vals
+    symmetries
 }
 
 #[cfg(test)]
@@ -313,5 +299,6 @@ mod tests {
 #.##.###.
 #.##.###.
 #....##..";
+        super::Solver13.part1(sample_input.lines());
     }
 }
