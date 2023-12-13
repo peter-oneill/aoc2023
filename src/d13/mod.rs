@@ -1,5 +1,5 @@
 use crate::Solver;
-use std::{str::Lines, vec};
+use std::{collections::HashMap, str::Lines, vec};
 
 pub struct Solver13;
 
@@ -9,22 +9,20 @@ impl Solver for Solver13 {
     }
 
     fn part1(&self, input_lines: Lines) -> String {
-        let mut char_maps: Vec<Vec<Vec<char>>> = vec![];
-        let mut translated_char_maps: Vec<Vec<Vec<char>>> = vec![];
+        // let mut translated_char_maps: Vec<Vec<Vec<char>>> = vec![];
 
         let mut char_map: Vec<Vec<char>> = vec![];
         let mut translated_char_map: Vec<Vec<char>> = vec![];
 
-        let maps: Vec<Lines> = input_lines.split(|line| line.is_empty()).collect();
-
-        char_maps = maps
-            .iter()
-            .map(|map| map.map(|line| line.chars().collect()).collect())
+        let char_lines: Vec<Vec<char>> = input_lines
+            .map(|line| line.chars().collect::<Vec<char>>())
             .collect();
 
+        let mut char_maps: Vec<&[Vec<char>]> = char_lines.split(|line| line.len() == 0).collect();
+
         for char_map in char_maps {
-            let max_x = char_map[0].len();
-            let max_y = char_map.len();
+            let max_x = char_map[0].len() - 1;
+            let max_y = char_map.len() - 1;
 
             let mut translated_char_map = vec![vec!['.'; max_y]; max_x];
 
@@ -34,15 +32,31 @@ impl Solver for Solver13 {
                 }
             }
 
+            println!("{} {}", max_x, max_y);
+
             // look for vertical symmetry
-            let mut lines_hash: HashMap<Vec<char>, usize> = HashMap::new();
-            for line in char_map.iter().enumerate() {
-                let count = lines_hash.entry(line.clone()).or_insert(0);
-                *count += 1;
+            let mut lines_hash: HashMap<&Vec<char>, usize> = HashMap::new();
+            for (ix, line) in char_map.iter().enumerate() {
+                let count = lines_hash.insert(line, ix);
+                if let Some(count) = count {
+                    println!("Found vertical symmetry at line {} and {}", ix, count);
+                    if (ix == 0) || (count == 0) || (ix == max_x - 1) || (count == max_x - 1) {
+                        println!("Good symmetry to edge");
+                    }
+                }
+            }
+
+            // look for horizontal symmetry
+            for (ix, line) in translated_char_map.iter().enumerate() {
+                let count = lines_hash.insert(line, ix);
+                if let Some(count) = count {
+                    println!("Found horizontal symmetry at line {} and {}", ix, count);
+                    if (ix == 0) || (count == 0) || (ix == max_y - 1) || (count == max_y - 1) {
+                        println!("Good symmetry to edge");
+                    }
+                }
             }
         }
-
-        for line in input_lines {}
 
         "0".to_string()
     }
@@ -145,7 +159,7 @@ mod tests {
 #####.##.
 ..##..###
 #....#..#";
-        assert_eq!(super::Solver11.part1(sample_input.lines()), "405");
+        assert_eq!(super::Solver13.part1(sample_input.lines()), "405");
     }
 
     #[test]
