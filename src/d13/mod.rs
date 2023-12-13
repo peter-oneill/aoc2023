@@ -1,142 +1,235 @@
 use crate::Solver;
-use std::{collections::HashMap, str::Lines, vec};
-
+use itertools::Itertools;
+use std::{borrow::BorrowMut, collections::HashMap, str::Lines, vec};
 pub struct Solver13;
 
+#[derive(PartialEq, Debug, Clone, Copy)]
+enum Dir {
+    Vertical,
+    Horizontal,
+}
+
+#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
+enum NodeVal {
+    Hash,
+    Dot,
+}
+
+impl NodeVal {
+    fn from_char(c: char) -> NodeVal {
+        match c {
+            '#' => NodeVal::Hash,
+            '.' => NodeVal::Dot,
+            _ => panic!("Invalid node value"),
+        }
+    }
+}
 impl Solver for Solver13 {
     fn day_number(&self) -> u32 {
         13
     }
 
     fn part1(&self, input_lines: Lines) -> String {
-        // let mut translated_char_maps: Vec<Vec<Vec<char>>> = vec![];
+        let mut symmetry_sum = 0;
 
-        let mut char_map: Vec<Vec<char>> = vec![];
-        let mut translated_char_map: Vec<Vec<char>> = vec![];
-
-        let char_lines: Vec<Vec<char>> = input_lines
-            .map(|line| line.chars().collect::<Vec<char>>())
+        let char_maps: Vec<Vec<Vec<NodeVal>>> = input_lines
+            .map(|line| {
+                line.chars()
+                    .map(|c| NodeVal::from_char(c))
+                    .collect::<Vec<NodeVal>>()
+            }) // convert each line to a vector of chars
+            .group_by(|line| line.is_empty()) // group the lines into groups of empty and non-empty lines
+            .into_iter()
+            .filter_map(|(empty, map)| if empty { None } else { Some(map.collect()) }) // drop empty lines
             .collect();
 
-        let mut char_maps: Vec<&[Vec<char>]> = char_lines.split(|line| line.len() == 0).collect();
-
         for char_map in char_maps {
-            let max_x = char_map[0].len() - 1;
-            let max_y = char_map.len() - 1;
-
-            let mut translated_char_map = vec![vec!['.'; max_y]; max_x];
-
-            for y in 0..max_y {
-                for x in 0..max_x {
-                    translated_char_map[x][y] = char_map[y][x];
-                }
-            }
-
-            println!("{} {}", max_x, max_y);
-
-            // look for vertical symmetry
-            let mut lines_hash: HashMap<&Vec<char>, usize> = HashMap::new();
-            for (ix, line) in char_map.iter().enumerate() {
-                let count = lines_hash.insert(line, ix);
-                if let Some(count) = count {
-                    println!("Found vertical symmetry at line {} and {}", ix, count);
-                    if (ix == 0) || (count == 0) || (ix == max_x - 1) || (count == max_x - 1) {
-                        println!("Good symmetry to edge");
-                    }
-                }
-            }
-
-            // look for horizontal symmetry
-            for (ix, line) in translated_char_map.iter().enumerate() {
-                let count = lines_hash.insert(line, ix);
-                if let Some(count) = count {
-                    println!("Found horizontal symmetry at line {} and {}", ix, count);
-                    if (ix == 0) || (count == 0) || (ix == max_y - 1) || (count == max_y - 1) {
-                        println!("Good symmetry to edge");
-                    }
-                }
+            let symm_val = find_horiz_or_vert_sym_values(&char_map)[0];
+            if symm_val.1 == Dir::Vertical {
+                symmetry_sum += symm_val.0 * 100;
+            } else {
+                symmetry_sum += symm_val.0;
             }
         }
 
-        "0".to_string()
+        symmetry_sum.to_string()
     }
 
     fn part2(&self, input_lines: Lines) -> String {
-        solve_with_expansion_factor(input_lines, 1000000)
+        // naive version - just test for changing each character in each map
+
+        let mut symmetry_sum = 0;
+
+        let char_maps: Vec<Vec<Vec<NodeVal>>> = input_lines
+            .map(|line| {
+                line.chars()
+                    .map(|c| NodeVal::from_char(c))
+                    .collect::<Vec<NodeVal>>()
+            }) // convert each line to a vector of chars
+            .group_by(|line| line.is_empty()) // group the lines into groups of empty and non-empty lines
+            .into_iter()
+            .filter_map(|(empty, map)| if empty { None } else { Some(map.collect()) }) // drop empty lines
+            .collect();
+
+        for char_map in char_maps {
+            let original_symmetry_line = find_horiz_or_vert_sym_values(&char_map)[0];
+
+            let mut found_symmetry = false;
+
+            for (y, row) in char_map.iter().enumerate() {
+                for (x, c) in row.iter().enumerate() {
+                    let mut altered_char_map = char_map.clone();
+                    if c == &NodeVal::Hash {
+                        altered_char_map[y][x] = NodeVal::Dot;
+
+                        if let Some(val) =
+                            find_new_symmetry_values(altered_char_map, original_symmetry_line)
+                        {
+                            symmetry_sum += val;
+                            found_symmetry = true;
+                            break;
+                        }
+                    } else {
+                        altered_char_map[y][x] = NodeVal::Hash;
+
+                        if let Some(val) =
+                            find_new_symmetry_values(altered_char_map, original_symmetry_line)
+                        {
+                            symmetry_sum += val;
+                            found_symmetry = true;
+                            break;
+                        }
+                    }
+                }
+                if found_symmetry {
+                    break;
+                }
+            }
+        }
+
+        symmetry_sum.to_string()
     }
 }
 
-fn solve_with_expansion_factor(input_lines: Lines, factor: i64) -> String {
-    let cloned_lines: Vec<&str> = input_lines.clone().collect();
-    let num_columns = cloned_lines[0].chars().count();
-    let num_rows = cloned_lines.len();
+fn find_new_symmetry_values(
+    char_map: Vec<Vec<NodeVal>>,
+    orig_symmetry_value: (usize, Dir),
+) -> Option<usize> {
+    let symmetry_values = find_horiz_or_vert_sym_values(&char_map);
+    let new_symmetry = symmetry_values
+        .iter()
+        .find(|symm_val| **symm_val != orig_symmetry_value);
 
-    let mut galaxies_on_single_row: Vec<char> = vec!['.'; num_columns];
-    let mut galaxies_on_single_column: Vec<char> = vec!['.'; num_rows];
+    new_symmetry.map(|(val, dir)| {
+        if dir == &Dir::Vertical {
+            val * 100
+        } else {
+            *val
+        }
+    })
+}
 
-    let mut galaxies: Vec<(i64, i64)> = Vec::new();
+fn find_horiz_or_vert_sym_values(char_map: &Vec<Vec<NodeVal>>) -> Vec<(usize, Dir)> {
+    let max_x = char_map[0].len() - 1;
+    let max_y = char_map.len() - 1;
+    let mut translated_char_map = vec![vec![NodeVal::Dot; max_y + 1]; max_x + 1];
 
-    // 1:  for each found galaxy:
-    // - add to the list of galaxies
-    // - mark the row and column as having a galaxy
-    for (y, row) in input_lines.enumerate() {
-        for (x, c) in row.char_indices() {
-            if c == '#' {
-                galaxies.push((x.try_into().unwrap(), y.try_into().unwrap()));
-                galaxies_on_single_row[x] = '#';
-                galaxies_on_single_column[y] = '#';
+    for (y_ix, row) in char_map.iter().enumerate() {
+        for (x_ix, c) in row.iter().enumerate() {
+            translated_char_map[x_ix][y_ix] = *c;
+        }
+    }
+
+    let mut vals = vec![];
+
+    // look for vertical symmetry
+    let symm_vals = find_symmetries(char_map);
+    if !symm_vals.is_empty() {
+        vals.append(
+            symm_vals
+                .iter()
+                .map(|symm_val| (*symm_val, Dir::Vertical))
+                .collect::<Vec<(usize, Dir)>>()
+                .borrow_mut(),
+        );
+    }
+
+    // look for horizontal symmetry
+    let symm_vals = find_symmetries(&translated_char_map);
+    if !symm_vals.is_empty() {
+        vals.append(
+            symm_vals
+                .iter()
+                .map(|symm_val| (*symm_val, Dir::Horizontal))
+                .collect::<Vec<(usize, Dir)>>()
+                .borrow_mut(),
+        );
+    }
+
+    vals
+}
+
+fn find_symmetries(char_map: &Vec<Vec<NodeVal>>) -> Vec<usize> {
+    let mut symmetries: Vec<usize> = vec![];
+    // let max_x = char_map[0].len() - 1;
+    let max_y = char_map.len() - 1;
+    let mut lines_hash: HashMap<&Vec<NodeVal>, Vec<usize>> = HashMap::new();
+
+    let mut start_of_symmetry = None;
+
+    for (ix, line) in char_map.iter().enumerate() {
+        let matching = lines_hash.get_mut(line);
+
+        match matching {
+            None => {
+                start_of_symmetry = None;
+                lines_hash.insert(line, vec![ix]);
+            }
+            Some(matching) => {
+                let mut found_good_match = false;
+
+                for prev_match in matching.iter() {
+                    // the line matches a previous one
+                    if start_of_symmetry.is_none() {
+                        // we aren't in the middle of symmetry - check it's exactly the previous line that matches
+                        if ix == prev_match + 1 {
+                            // Yes!  start the symmetry
+                            start_of_symmetry = Some(ix);
+                        } else {
+                            // No!  we've matched a line from some time back, but aren't in the middle of symmetry.  It therefore can't be a valid symmetry.  continue the loop
+                            continue;
+                        }
+                    }
+
+                    if (ix as i32 - start_of_symmetry.unwrap() as i32)
+                        != (start_of_symmetry.unwrap() as i32 - 1 - *prev_match as i32)
+                    {
+                        if ix == prev_match + 1 {
+                            // restart the symmetry!
+                            start_of_symmetry = Some(ix);
+                        } else {
+                            // No!  we've matched a line from some time back, but aren't in the middle of symmetry.  It therefore can't be a valid symmetry.  continue the loop
+                            continue;
+                        }
+                    }
+
+                    found_good_match = true;
+
+                    if (ix == 0) || (*prev_match == 0) || (ix == max_y) || (*prev_match == max_y) {
+                        symmetries.push(start_of_symmetry.unwrap());
+                        start_of_symmetry = None;
+                    }
+                    break;
+                }
+
+                if !found_good_match {
+                    start_of_symmetry = None;
+                }
+                matching.push(ix);
             }
         }
     }
-
-    // 2: get a lists of row/column indices which have no galaxies
-    let empty_column_ixs = galaxies_on_single_row
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c == &&'.')
-        .map(|(ix, _)| ix.try_into().unwrap())
-        .collect::<Vec<i64>>();
-    let empty_row_ixs = galaxies_on_single_column
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| c == &&'.')
-        .map(|(ix, _)| ix.try_into().unwrap())
-        .collect::<Vec<i64>>();
-
-    let mut dist_sum = 0;
-
-    // 3: for each pair of galaxies, calculate the distance between them
-    for left_ix in 0..galaxies.len() {
-        let l_gal = galaxies[left_ix];
-        for r_gal in galaxies[left_ix + 1..].iter() {
-            // The offset in each direction is the number of empty rows/columns indices which we've passed
-            let left_offset_x: i64 = (factor - 1)
-                * TryInto::<i64>::try_into(
-                    empty_column_ixs.iter().filter(|ix| ix < &&l_gal.0).count(),
-                )
-                .unwrap();
-            let right_offset_x: i64 = (factor - 1)
-                * TryInto::<i64>::try_into(
-                    empty_column_ixs.iter().filter(|ix| ix < &&r_gal.0).count(),
-                )
-                .unwrap();
-            let left_offset_y: i64 = (factor - 1)
-                * TryInto::<i64>::try_into(
-                    empty_row_ixs.iter().filter(|ix| ix < &&l_gal.1).count(),
-                )
-                .unwrap();
-            let right_offset_y: i64 = (factor - 1)
-                * TryInto::<i64>::try_into(
-                    empty_row_ixs.iter().filter(|ix| ix < &&r_gal.1).count(),
-                )
-                .unwrap();
-            let x_dist = ((l_gal.0 + left_offset_x) - (r_gal.0 + right_offset_x)).abs();
-            let y_dist = ((l_gal.1 + left_offset_y) - (r_gal.1 + right_offset_y)).abs();
-            dist_sum += x_dist + y_dist;
-        }
-    }
-
-    dist_sum.to_string()
+    symmetries
 }
 
 #[cfg(test)]
@@ -164,23 +257,36 @@ mod tests {
 
     #[test]
     fn part2() {
-        let sample_input = "...#......
-.......#..
-#.........
-..........
-......#...
-.#........
-.........#
-..........
-.......#..
-#...#.....";
-        assert_eq!(
-            super::solve_with_expansion_factor(sample_input.lines(), 10),
-            "1030"
-        );
-        assert_eq!(
-            super::solve_with_expansion_factor(sample_input.lines(), 100),
-            "8410"
-        );
+        let sample_input = "#.##..##.
+..#.##.#.
+##......#
+##......#
+..#.##.#.
+..##..##.
+#.#.##.#.
+
+#...##..#
+#....#..#
+..##..###
+#####.##.
+#####.##.
+..##..###
+#....#..#";
+        assert_eq!(super::Solver13.part2(sample_input.lines()), "400");
+    }
+
+    #[test]
+    fn single_map() {
+        let sample_input = "##..####.
+#....#.##
+..##..#.#
+#.......#
+#.##.###.
+#....##..
+#.##.###.
+#.##.###.
+#.##.###.
+#.##.###.
+#....##..";
     }
 }
