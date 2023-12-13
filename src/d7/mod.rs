@@ -58,7 +58,7 @@ impl Solver for Solver7 {
             let mut quality = 0;
 
             for card in cards {
-                quality = quality * 14 + card;
+                quality = quality * 15 + card;
                 match card_counts.get_mut(&card) {
                     Some(count) => *count += 1,
                     None => {
@@ -153,7 +153,7 @@ impl Solver for Solver7 {
             let mut quality = 0;
 
             for card in cards {
-                quality = quality * 14 + card;
+                quality = quality * 15 + card;
                 match card_counts.get_mut(&card) {
                     Some(count) => *count += 1,
                     None => {
