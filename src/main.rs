@@ -49,10 +49,18 @@ trait Solver {
 fn main() {
     let args = env::args().skip(1); // Skip the executable name
 
+    let mut threads = Vec::new();
+
     for arg in args {
         let day = arg.parse::<u32>().unwrap();
-        let soln = get_solver_from_day(day).solve();
-        println!("day {}: {}", day, soln);
+        let t = std::thread::spawn(move || {
+            let soln = get_solver_from_day(day).solve();
+            println!("{}: {}", day, soln);
+        });
+        threads.push(t);
+    }
+    for t in threads {
+        t.join().unwrap();
     }
 }
 
