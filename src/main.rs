@@ -62,7 +62,7 @@ trait Solver {
         let part1_soln = self.part1(lines.clone());
         let part2_soln = self.part2(lines);
 
-        format!("part 1: {},\tpart 2: {}", part1_soln, part2_soln)
+        format!("part 1: {part1_soln:>15}\tpart 2: {part2_soln:>15}")
     }
 
     fn part1(&self, lines: Lines) -> String;
@@ -78,7 +78,7 @@ fn main() {
         let day = arg.parse::<u32>().unwrap();
         let t = std::thread::spawn(move || {
             let soln = get_solver_from_day(day).solve();
-            println!("{}: {}", day, soln);
+            println!("{day:>2}: {}", soln);
         });
         threads.push(t);
     }
