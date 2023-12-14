@@ -1,5 +1,5 @@
 use core::panic;
-use std::{cell::RefCell, collections::HashMap, fmt::Display, str::Lines, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc, str::Lines};
 
 use itertools::Itertools;
 
@@ -13,17 +13,23 @@ enum Rock {
     None = 2,
 }
 
-impl Display for Rock {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Rock {
+    fn to_char(self) -> char {
         match self {
-            Rock::Square => write!(f, "#"),
-            Rock::Round => write!(f, "O"),
-            Rock::None => write!(f, "."),
+            Rock::Square => '#',
+            Rock::Round => 'O',
+            Rock::None => '.',
         }
     }
 }
 
-type Location = Arc<RefCell<Rock>>;
+impl Display for Rock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_char())
+    }
+}
+
+type Location = Rc<RefCell<Rock>>;
 
 enum Dir {
     North,
@@ -49,7 +55,7 @@ impl Solver for Solver14 {
                 if cols_of_rocks.get(x).is_none() {
                     cols_of_rocks.push(vec![]);
                 }
-                let location = Arc::new(RefCell::new(match c {
+                let location = Rc::new(RefCell::new(match c {
                     '.' => Rock::None,
                     '#' => Rock::Square,
                     'O' => Rock::Round,
@@ -78,7 +84,7 @@ impl Solver for Solver14 {
                 if cols_of_rocks.get(x).is_none() {
                     cols_of_rocks.push(vec![]);
                 }
-                let location = Arc::new(RefCell::new(match c {
+                let location = Rc::new(RefCell::new(match c {
                     '.' => Rock::None,
                     '#' => Rock::Square,
                     'O' => Rock::Round,
@@ -90,22 +96,39 @@ impl Solver for Solver14 {
             }
         }
 
-        let mut map_history: HashMap<String, u32> = HashMap::new();
+        let mut map_history_hashmap: HashMap<String, u32> = HashMap::new();
+        let mut map_history_vec: Vec<String> = vec![];
 
         for ii in 0..1000000000 {
             spin(&mut rows_of_rocks, &mut cols_of_rocks);
 
-            let start_of_loop = map_history.insert(rows_to_string(&rows_of_rocks), ii);
+            let str_representation = rows_to_string(&rows_of_rocks);
+            let start_of_loop = map_history_hashmap.insert(str_representation.clone(), ii);
+            map_history_vec.push(str_representation);
 
             if let Some(start_of_loop_ix) = start_of_loop {
                 let remaining = (1000000000 - ii - 1) % (ii - start_of_loop_ix);
-                for _ in 0..remaining {
-                    spin(&mut rows_of_rocks, &mut cols_of_rocks);
-                }
-                break;
+                let end_version_ix = start_of_loop_ix + remaining;
+                let previously_found_string = &map_history_vec[end_version_ix as usize];
+                let previously_found_map = previously_found_string
+                    .chars()
+                    .chunks(rows_of_rocks[0].len())
+                    .into_iter()
+                    .map(|row| {
+                        row.map(|c| {
+                            Rc::new(RefCell::new(match c {
+                                '.' => Rock::None,
+                                '#' => Rock::Square,
+                                'O' => Rock::Round,
+                                _ => panic!("Invalid input"),
+                            }))
+                        })
+                        .collect::<Vec<Rc<RefCell<Rock>>>>()
+                    })
+                    .collect::<Vec<Vec<Rc<RefCell<Rock>>>>>();
+                return calc_north_weight(&previously_found_map).to_string();
             }
         }
-
         calc_north_weight(&rows_of_rocks).to_string()
     }
 }
@@ -117,19 +140,13 @@ fn spin(rows_of_rocks: &mut Vec<Vec<Location>>, cols_of_rocks: &mut Vec<Vec<Loca
     roll_balls(rows_of_rocks, cols_of_rocks, Dir::East);
 }
 
-fn rows_to_string(rows: &Vec<Vec<Location>>) -> String {
+fn rows_to_string(rows: &[Vec<Location>]) -> String {
     rows.iter()
-        .map(|row| {
-            row.iter()
-                .map(|l| l.borrow().to_string())
-                .collect::<Vec<String>>()
-                .join("")
-        })
-        .collect::<Vec<String>>()
-        .join("\n")
+        .flat_map(|row| row.iter().map(|l| l.borrow().to_char()))
+        .collect::<String>()
 }
 
-fn calc_north_weight(rows: &Vec<Vec<Location>>) -> u32 {
+fn calc_north_weight(rows: &[Vec<Location>]) -> u32 {
     let num_rows = rows.len();
     rows.iter()
         .enumerate()
@@ -147,26 +164,22 @@ fn roll_balls(rows: &mut Vec<Vec<Location>>, cols: &mut Vec<Vec<Location>>, dir:
         Dir::South => (&cols, true),
         Dir::West => (&rows, false),
     };
+    let cmp_fn = |a: &Rock, b: &Rock| if reverse { b.cmp(a) } else { a.cmp(b) };
 
     for line in working_map.iter() {
-        let new_line: Vec<Rock> = line
+        for (loc_ix, rock) in line
             .iter()
             .map(|l| *l.borrow())
             .group_by(|r| *r == Rock::Square)
             .into_iter()
-            .map(|(_, g)| {
+            .flat_map(|(_, g)| {
                 let mut g = g.collect::<Vec<Rock>>();
-                g.sort();
-                if reverse {
-                    g.reverse();
-                }
+                g.sort_unstable_by(cmp_fn);
                 g
             })
-            .flatten()
-            .collect();
-
-        for (loc_ix, rock) in new_line.iter().enumerate() {
-            *line[loc_ix].borrow_mut() = *rock;
+            .enumerate()
+        {
+            *line[loc_ix].borrow_mut() = rock;
         }
     }
 }
