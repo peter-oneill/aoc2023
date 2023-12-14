@@ -62,12 +62,6 @@ impl Solver for Solver13 {
 
         for node_map in node_maps {
             symmetry_sum += find_only_symmetry_values(&node_map).unwrap();
-            // let symm_val = find_only_symmetry_values(&node_map).unwrap();
-            // if symm_val.1 == Dir::Vertical {
-            //     symmetry_sum += symm_val.0 * 100;
-            // } else {
-            //     symmetry_sum += symm_val.0;
-            // }
         }
 
         symmetry_sum.to_string()
