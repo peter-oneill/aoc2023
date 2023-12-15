@@ -75,23 +75,32 @@ impl Solver for Solver15 {
 
             let target_box = &mut lens_boxes[box_ix];
 
-            match (target_box.lens_map.remove(&label), action) {
-                (Some(old_lens), LensBoxAction::Insert(new_lens)) => {
-                    old_lens.borrow_mut().power = new_lens.power;
-                    target_box.lens_map.insert(label, old_lens);
+            // Optimized over matching (action, lens_map.<some operation>)
+            // Each possible branch only has a single hashmap operation,
+            // except for the replace case, which cannot be done with one:
+            // because we don't know whether to insert or replace until we've inserted
+            // at which point we'd need to either re-insert the old value,
+            // or somehow handle making the inserted value point to the right
+            // lens in the vector.
+            match action {
+                LensBoxAction::Insert(new_lens) => {
+                    match target_box.lens_map.get(&label) {
+                        Some(old_key) => old_key.borrow_mut().power = new_lens.power,
+                        None => {
+                            let lens = Rc::new(RefCell::new(new_lens));
+                            target_box
+                                .lens_map
+                                .insert(lens.borrow().name.clone(), lens.clone());
+                            target_box.ordered_lenses.push(lens);
+                        }
+                    };
                 }
-                (Some(old_lens), LensBoxAction::Remove) => {
-                    old_lens.borrow_mut().power = None;
+                LensBoxAction::Remove => {
+                    if let Some(old_lens) = target_box.lens_map.get(&label) {
+                        old_lens.borrow_mut().power = None;
+                    }
                 }
-                (None, LensBoxAction::Insert(new_lens)) => {
-                    let lens = Rc::new(RefCell::new(new_lens));
-                    target_box
-                        .lens_map
-                        .insert(lens.borrow().name.clone(), lens.clone());
-                    target_box.ordered_lenses.push(lens);
-                }
-                (None, LensBoxAction::Remove) => {}
-            }
+            };
         }
 
         let focusing_power = lens_boxes
@@ -103,11 +112,11 @@ impl Solver for Solver15 {
                     .iter()
                     .filter(|lens| lens.borrow().power.is_some())
                     .enumerate()
-                    .map(|(lens_ix, lens)| {
+                    .map(move |(lens_ix, lens)| {
                         (1 + box_ix) * (1 + lens_ix) * lens.borrow().power.unwrap()
                     })
-                    .sum::<usize>()
             })
+            .flatten()
             .sum::<usize>();
 
         focusing_power.to_string()
