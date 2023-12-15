@@ -3,12 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, str::Lines};
 use crate::Solver;
 pub struct Solver15;
 
-// struct ListNode {
-//     lens: Lens,
-//     next: Option<Rc<RefCell<ListNode>>>,
-//     prev: Option<Rc<RefCell<ListNode>>>,
-// }
-
+#[derive(Clone)]
 struct LensBox {
     lens_map: HashMap<String, Rc<RefCell<Lens>>>,
     ordered_lenses: Vec<Rc<RefCell<Lens>>>,
@@ -38,27 +33,22 @@ impl Solver for Solver15 {
     }
 
     fn part1(&self, mut input_lines: Lines) -> String {
-        let input = input_lines.next().unwrap();
-        let sum = input
+        input_lines
+            .next()
+            .unwrap()
             .split(',')
             .map(|s| {
                 s.chars()
-                    .fold(0, |acc, c| ((acc + c as u32 % 256) * 17) % 256)
+                    .fold(0, |acc, c| ((acc + c as u8 as usize) * 17) % 256)
             })
-            .sum::<u32>();
-
-        sum.to_string()
+            .sum::<usize>()
+            .to_string()
     }
 
     fn part2(&self, mut input_lines: Lines) -> String {
-        let input = input_lines.next().unwrap();
+        let mut lens_boxes: Vec<LensBox> = vec![LensBox::new(); 256];
 
-        let mut lens_boxes: Vec<LensBox> = vec![];
-        for _ in 0..256 {
-            lens_boxes.push(LensBox::new());
-        }
-
-        for instruction in input.split(',') {
+        for instruction in input_lines.next().unwrap().split(',') {
             let mut parts = instruction.split(|c| c == '=' || c == '-');
             let label = parts.next().unwrap().to_string();
             let box_ix = label
@@ -96,7 +86,7 @@ impl Solver for Solver15 {
                     };
                 }
                 LensBoxAction::Remove => {
-                    if let Some(old_lens) = target_box.lens_map.get(&label) {
+                    if let Some(old_lens) = target_box.lens_map.remove(&label) {
                         old_lens.borrow_mut().power = None;
                     }
                 }
