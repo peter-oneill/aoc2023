@@ -157,6 +157,29 @@ fn calc_north_weight(rows: &[Vec<Location>]) -> u32 {
         .sum()
 }
 
+fn sort_rocks(
+    rocks: &Vec<Rc<RefCell<Rock>>>,
+    roll_back_to: usize,
+    first_rock: (Rock, usize),
+    second_rock: (Rock, usize),
+) {
+    update_rocks(rocks, roll_back_to, first_rock.1, first_rock.0);
+    update_rocks(
+        rocks,
+        roll_back_to + first_rock.1,
+        second_rock.1,
+        second_rock.0,
+    );
+}
+
+fn update_rocks(rocks: &Vec<Rc<RefCell<Rock>>>, start_ix: usize, num: usize, rock_type: Rock) {
+    let start_ix = start_ix;
+    let finish_ix = start_ix + num;
+    for rock in &rocks[start_ix..finish_ix] {
+        *(**rock).borrow_mut() = rock_type;
+    }
+}
+
 fn roll_balls(rows: &mut Vec<Vec<Location>>, cols: &mut Vec<Vec<Location>>, dir: Dir) {
     let (working_map, reverse) = match dir {
         Dir::North => (&cols, false),
@@ -164,23 +187,68 @@ fn roll_balls(rows: &mut Vec<Vec<Location>>, cols: &mut Vec<Vec<Location>>, dir:
         Dir::South => (&cols, true),
         Dir::West => (&rows, false),
     };
-    let cmp_fn = |a: &Rock, b: &Rock| if reverse { b.cmp(a) } else { a.cmp(b) };
 
     for line in working_map.iter() {
-        for (loc_ix, rock) in line
-            .iter()
-            .map(|l| *l.borrow())
-            .group_by(|r| *r == Rock::Square)
-            .into_iter()
-            .flat_map(|(_, g)| {
-                let mut g = g.collect::<Vec<Rock>>();
-                g.sort_unstable_by(cmp_fn);
-                g
-            })
-            .enumerate()
-        {
-            *line[loc_ix].borrow_mut() = rock;
+        let mut last_rock_square_or_start = true;
+        let mut rounds_since_last_square: usize = 0;
+        let mut nones_since_last_square: usize = 0;
+        let mut location_to_roll_back_to: usize = 0;
+
+        for loc_ix in 0..line.len() {
+            match *line[loc_ix].borrow() {
+                Rock::Square => {
+                    if !last_rock_square_or_start {
+                        // this is a square, but the last wasn't.  We need to roll the balls
+                        if reverse {
+                            sort_rocks(
+                                line,
+                                location_to_roll_back_to,
+                                (Rock::None, nones_since_last_square),
+                                (Rock::Round, rounds_since_last_square),
+                            );
+                        } else {
+                            sort_rocks(
+                                line,
+                                location_to_roll_back_to,
+                                (Rock::Round, rounds_since_last_square),
+                                (Rock::None, nones_since_last_square),
+                            );
+                        }
+                    };
+
+                    rounds_since_last_square = 0;
+                    nones_since_last_square = 0;
+                    last_rock_square_or_start = true;
+                    location_to_roll_back_to = loc_ix + 1;
+                }
+                Rock::Round => {
+                    rounds_since_last_square += 1;
+                    last_rock_square_or_start = false;
+                }
+                Rock::None => {
+                    nones_since_last_square += 1;
+                    last_rock_square_or_start = false;
+                }
+            }
         }
+        if !last_rock_square_or_start {
+            // finished the row, and have rocks to sort
+            if reverse {
+                sort_rocks(
+                    line,
+                    location_to_roll_back_to,
+                    (Rock::None, nones_since_last_square),
+                    (Rock::Round, rounds_since_last_square),
+                );
+            } else {
+                sort_rocks(
+                    line,
+                    location_to_roll_back_to,
+                    (Rock::Round, rounds_since_last_square),
+                    (Rock::None, nones_since_last_square),
+                );
+            }
+        };
     }
 }
 
