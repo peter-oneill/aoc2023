@@ -49,7 +49,7 @@ use crate::d6::Solver6;
 use crate::d7::Solver7;
 use crate::d8::Solver8;
 use crate::d9::Solver9;
-use std::{env, str::Lines};
+use std::{env, str::Lines, vec};
 
 trait Solver {
     fn day_number(&self) -> u32;
@@ -72,18 +72,32 @@ trait Solver {
 fn main() {
     let args = env::args().skip(1); // Skip the executable name
 
-    let mut threads = Vec::new();
+    let mut days = vec![];
+    let mut threads = vec![];
+    let mut use_threads: bool = false;
 
     for arg in args {
-        let day = arg.parse::<u32>().unwrap();
-        let t = std::thread::spawn(move || {
-            let soln = get_solver_from_day(day).solve();
-            println!("{day:>2}: {}", soln);
-        });
-        threads.push(t);
+        if arg == "t" {
+            println!("Using threads");
+            use_threads = true;
+            continue;
+        }
+
+        days.push(arg.parse::<u32>().unwrap());
     }
+
+    for day in days {
+        let day_soln = move || println!("{day:>2}: {}", get_solver_from_day(day).solve());
+
+        if use_threads {
+            threads.push(std::thread::spawn(day_soln));
+        } else {
+            day_soln();
+        };
+    }
+
     for t in threads {
-        t.join().unwrap();
+        _ = t.join().unwrap();
     }
 }
 
