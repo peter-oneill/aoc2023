@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, str::Lines};
+use std::{cell::RefCell, str::Lines};
 
 use crate::Solver;
 pub struct Solver16;
@@ -111,11 +111,10 @@ impl Node {
         let new_output_directions: Vec<Direction> = output_directions
             .iter()
             .filter_map(|d| {
-                let lit = self.output_directions[*d as usize].1;
-                if !lit {
-                    Some(*d)
-                } else {
+                if self.output_directions[*d as usize].1 {
                     None
+                } else {
+                    Some(*d)
                 }
             })
             .collect();
@@ -216,56 +215,92 @@ impl Solver for Solver16 {
         );
         let mut start_locs = vec![];
         for y in 0..mirror_grid.len() {
-            start_locs.push(NodeEntry {
-                coords: (0, y),
-                entry_dir: Direction::W,
-            });
-            start_locs.push(NodeEntry {
-                coords: (mirror_grid[0].len() - 1, y),
-                entry_dir: Direction::E,
-            });
+            start_locs.push((
+                NodeEntry {
+                    coords: (0, y),
+                    entry_dir: Direction::W,
+                },
+                RefCell::new(false),
+            ));
+            start_locs.push((
+                NodeEntry {
+                    coords: (mirror_grid[0].len() - 1, y),
+                    entry_dir: Direction::E,
+                },
+                RefCell::new(false),
+            ));
         }
         for x in 0..mirror_grid[0].len() {
-            start_locs.push(NodeEntry {
-                coords: (x, 0),
-                entry_dir: Direction::N,
-            });
-            start_locs.push(NodeEntry {
-                coords: (x, mirror_grid.len() - 1),
-                entry_dir: Direction::S,
-            });
+            start_locs.push((
+                NodeEntry {
+                    coords: (x, 0),
+                    entry_dir: Direction::N,
+                },
+                RefCell::new(false),
+            ));
+            start_locs.push((
+                NodeEntry {
+                    coords: (x, mirror_grid.len() - 1),
+                    entry_dir: Direction::S,
+                },
+                RefCell::new(false),
+            ));
         }
+        let mut max = 0;
+        for start_loc in start_locs.iter() {
+            if *start_loc.1.borrow() {
+                continue;
+            }
+            *start_loc.1.borrow_mut() = true;
+            let mut current_locs = vec![start_loc.0.clone()];
 
-        start_locs
-            .iter()
-            .map(|start_loc| {
-                let mut current_locs = vec![start_loc.clone()];
-
-                for y in 0..mirror_grid.len() {
-                    for x in 0..mirror_grid[0].len() {
-                        mirror_grid[y][x].lit = false;
-                        for d in 0..4 {
-                            mirror_grid[y][x].output_directions[d].1 = false;
-                        }
+            for y in 0..mirror_grid.len() {
+                for x in 0..mirror_grid[0].len() {
+                    mirror_grid[y][x].lit = false;
+                    for d in 0..4 {
+                        mirror_grid[y][x].output_directions[d].1 = false;
                     }
                 }
+            }
 
-                while !current_locs.is_empty() {
-                    let loc = current_locs.pop().unwrap();
-                    let node = &mut mirror_grid[loc.coords.1][loc.coords.0];
-                    let new_dirs = node.visit_node(loc.entry_dir);
-                    current_locs.extend(
-                        new_dirs
-                            .iter()
-                            .filter_map(|d| NodeEntry::from(loc.coords, max_coords, *d)),
-                    );
+            while !current_locs.is_empty() {
+                let loc = current_locs.pop().unwrap();
+                let node = &mut mirror_grid[loc.coords.1][loc.coords.0];
+                let new_dirs = node.visit_node(loc.entry_dir);
+                current_locs.extend(
+                    new_dirs
+                        .iter()
+                        .filter_map(|d| NodeEntry::from(loc.coords, max_coords, *d)),
+                );
+            }
+
+            for y in 0..mirror_grid.len() {
+                if mirror_grid[y][0].output_directions[Direction::W as usize].1 {
+                    *start_locs[y].1.borrow_mut() = true;
                 }
+                if mirror_grid[y][mirror_grid[0].len() - 1].output_directions[Direction::E as usize]
+                    .1
+                {
+                    *start_locs[mirror_grid.len() + y].1.borrow_mut() = true;
+                }
+            }
+            for x in 0..mirror_grid[0].len() {
+                if mirror_grid[0][x].output_directions[Direction::N as usize].1 {
+                    *start_locs[2 * mirror_grid.len() + x].1.borrow_mut() = true;
+                }
+                if mirror_grid[0][mirror_grid[0].len() - 1].output_directions[Direction::S as usize]
+                    .1
+                {
+                    *start_locs[2 * mirror_grid.len() + mirror_grid[0].len() + x]
+                        .1
+                        .borrow_mut() = true;
+                }
+            }
 
-                mirror_grid.iter().flatten().filter(|n| n.lit).count()
-            })
-            .max()
-            .unwrap()
-            .to_string()
+            max = std::cmp::max(max, mirror_grid.iter().flatten().filter(|n| n.lit).count());
+        }
+
+        max.to_string()
     }
 }
 
