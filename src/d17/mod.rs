@@ -1,4 +1,4 @@
-use std::{cell::RefCell, str::Lines, sync::Arc, thread::current};
+use std::{collections::BTreeMap, str::Lines};
 
 use crate::Solver;
 pub struct Solver17;
@@ -44,8 +44,7 @@ impl Node {
         heat_loss: usize,
         direction: Direction,
         conseq_steps: usize,
-        search_nodes: &mut Vec<(isize, isize, usize)>,
-        max_straight_line: usize,
+        search_nodes: &mut OrderedMap,
     ) {
         let leasts = &mut self.leasts_by_dir[direction as usize];
         let heat_loss = heat_loss + self.heat_loss;
@@ -59,16 +58,9 @@ impl Node {
 
         if !self.weight.is_some_and(|w| w <= heat_loss) {
             // This is a cheaper path for the next round of node selection.
-            search_nodes.push((self.x, self.y, heat_loss));
+            search_nodes.add_to_btreemap(heat_loss, (self.x, self.y));
             self.weight = Some(heat_loss);
         }
-
-        // This path could also be strictly than paths with more consecutive steps
-        // for least in leasts[conseq_steps..max_straight_line].iter_mut() {
-        //     if !least.is_some_and(|loss| loss < heat_loss) {
-        //         *least = Some(heat_loss);
-        //     }
-        // }
     }
 
     fn min_heat_loss(
@@ -91,25 +83,31 @@ impl Node {
             (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
             (_, _) => a.or(b),
         }
-        // std::cmp::min(a, b)
-        //     ,
-        //     self.leasts_by_dir[dir2 as usize][0..2],
-        // ]
-        // .iter()
-        // .flatten()
-        // .filter_map(|v| *v)
-        // .min()
-
-        // [self.leasts_by_dir[dir1 as usize][0], self.leasts_by_dir[dir2 as usize][0]]
-        //     .iter()
-        //     .filter_map(|x| *x)
-        //     .min()
     }
 }
 
+struct OrderedMap {
+    map: BTreeMap<usize, Vec<(isize, isize)>>,
+}
+impl OrderedMap {
+    fn add_to_btreemap(&mut self, key: usize, value: (isize, isize)) {
+        if let Some(vec) = self.map.get_mut(&key) {
+            vec.push(value);
+        } else {
+            self.map.insert(key, vec![value]);
+        }
+    }
+
+    fn pop_from_btreemap(&mut self) -> Option<(isize, isize)> {
+        self.map
+            .iter_mut()
+            .find(|(_, vec)| !vec.is_empty())
+            .and_then(|(key, vec)| vec.pop())
+    }
+}
 struct Map {
     grid: Grid,
-    search_nodes: Vec<(isize, isize, usize)>,
+    search_nodes: OrderedMap,
     min_straight_line: usize,
     max_straight_line: usize,
 }
@@ -132,30 +130,12 @@ impl Grid {
 
 impl Map {
     fn solve_from_location(&mut self, x: isize, y: isize) {
-        self.search_nodes.push((x, y, 0));
+        self.search_nodes.add_to_btreemap(0, (x, y));
+
         self.grid.get_mut(y, x).unwrap().make_start_node();
 
         // let mut lit = 0;
-        while !self.search_nodes.is_empty() {
-            self.search_nodes.sort_by(|a, b| b.2.cmp(&a.2));
-            // println!("search nodes: {:?}", self.search_nodes);
-            let (x, y, _) = self.search_nodes.pop().unwrap(); // sort_by(|a, b| b.2.cmp(&a.2)).pop();
-
-            // println!("going from node {},{}", x, y);
-            // for (rix, r) in self.grid.inner.iter().enumerate() {
-            //     for (cix, c) in r.iter().enumerate() {
-            //         println!(
-            //             "{cix},{rix} :{:?}",
-            //             c.leasts_by_dir
-            //                 .iter()
-            //                 .flatten()
-            //                 .map(|v| v.unwrap_or(0))
-            //                 .collect::<Vec<usize>>()
-            //         );
-            //     }
-            //     println!();
-            // }
-
+        while let Some((x, y)) = self.search_nodes.pop_from_btreemap() {
             let current_node = self.grid.get_mut(y, x).unwrap();
             if current_node.weight == None {
                 continue;
@@ -184,80 +164,52 @@ impl Map {
             // N
             if let Some(node) = self.grid.get_mut(y - 1, x) {
                 if let Some(heat_loss) = min_left_right {
-                    node.update_cost(
-                        heat_loss,
-                        Direction::N,
-                        0,
-                        &mut self.search_nodes,
-                        self.max_straight_line,
-                    );
+                    node.update_cost(heat_loss, Direction::N, 0, &mut self.search_nodes);
                 }
                 Self::continue_straight_line(
                     current_node,
                     node,
                     Direction::N,
                     &mut self.search_nodes,
-                    self.min_straight_line,
                     self.max_straight_line,
                 )
             }
             // S
             if let Some(node) = self.grid.get_mut(y + 1, x) {
                 if let Some(heat_loss) = min_left_right {
-                    node.update_cost(
-                        heat_loss,
-                        Direction::S,
-                        0,
-                        &mut self.search_nodes,
-                        self.max_straight_line,
-                    );
+                    node.update_cost(heat_loss, Direction::S, 0, &mut self.search_nodes);
                 }
                 Self::continue_straight_line(
                     current_node,
                     node,
                     Direction::S,
                     &mut self.search_nodes,
-                    self.min_straight_line,
                     self.max_straight_line,
                 )
             }
             // W
             if let Some(node) = self.grid.get_mut(y, x - 1) {
                 if let Some(heat_loss) = min_up_down {
-                    node.update_cost(
-                        heat_loss,
-                        Direction::W,
-                        0,
-                        &mut self.search_nodes,
-                        self.max_straight_line,
-                    );
+                    node.update_cost(heat_loss, Direction::W, 0, &mut self.search_nodes);
                 }
                 Self::continue_straight_line(
                     current_node,
                     node,
                     Direction::W,
                     &mut self.search_nodes,
-                    self.min_straight_line,
                     self.max_straight_line,
                 )
             }
             // E
             if let Some(node) = self.grid.get_mut(y, x + 1) {
                 if let Some(heat_loss) = min_up_down {
-                    node.update_cost(
-                        heat_loss,
-                        Direction::E,
-                        0,
-                        &mut self.search_nodes,
-                        self.max_straight_line,
-                    );
+                    node.update_cost(heat_loss, Direction::E, 0, &mut self.search_nodes);
                 }
                 Self::continue_straight_line(
                     current_node,
                     node,
                     Direction::E,
                     &mut self.search_nodes,
-                    self.min_straight_line,
                     self.max_straight_line,
                 )
             }
@@ -269,26 +221,16 @@ impl Map {
         current_node: Node,
         next_node: &mut Node,
         dir: Direction,
-        search_nodes: &mut Vec<(isize, isize, usize)>,
-        min_straight_line: usize,
+        search_nodes: &mut OrderedMap,
         max_straight_line: usize,
     ) {
         for ii in 0..(max_straight_line - 1) {
             if let Some(heat_loss) = current_node.leasts_by_dir[dir as usize][ii] {
                 if heat_loss > 0 {
-                    next_node.update_cost(heat_loss, dir, ii + 1, search_nodes, max_straight_line);
+                    next_node.update_cost(heat_loss, dir, ii + 1, search_nodes);
                 }
             }
         }
-        // if let Some(heat_loss) = current_node.leasts_by_dir[dir as usize][0] {
-        //     next_node.update_cost(heat_loss, dir, 1, search_nodes);
-        // }
-        // if let Some(heat_loss) = current_node.leasts_by_dir[dir as usize][1] {
-        //     next_node.update_cost(heat_loss, dir, 2, search_nodes);
-        // }
-        // if let Some(heat_loss) = current_node.leasts_by_dir[dir as usize][2] {
-        // next_node.update_cost(heat_loss + current_node.heat_loss, dir, 3, search_nodes);
-        // }
     }
 }
 impl Solver for Solver17 {
@@ -310,7 +252,9 @@ impl Solver for Solver17 {
 
         let mut map = Map {
             grid: Grid { inner: inner_grid },
-            search_nodes: Vec::with_capacity(500),
+            search_nodes: OrderedMap {
+                map: BTreeMap::new(),
+            },
             min_straight_line: 1,
             max_straight_line: 3,
         };
@@ -328,20 +272,6 @@ impl Solver for Solver17 {
             .filter_map(|v| *v)
             .min()
             .unwrap();
-
-        // for (rix, r) in map.grid.inner.iter().enumerate() {
-        //     for (cix, c) in r.iter().enumerate() {
-        //         println!(
-        //             "{cix},{rix} :{:?}",
-        //             c.leasts_by_dir
-        //                 .iter()
-        //                 .flatten()
-        //                 .map(|v| v.unwrap_or(0))
-        //                 .collect::<Vec<usize>>()
-        //         );
-        //     }
-        //     println!();
-        // }
 
         (min).to_string()
     }
@@ -363,42 +293,15 @@ impl Solver for Solver17 {
 
         let mut map = Map {
             grid: Grid { inner: inner_grid },
-            search_nodes: Vec::with_capacity(500),
+            search_nodes: OrderedMap {
+                map: BTreeMap::new(),
+            },
             min_straight_line,
             max_straight_line,
         };
 
         map.solve_from_location(0, 0);
 
-        // for (rix, r) in map.grid.inner.iter().enumerate() {
-        //     for (cix, c) in r.iter().enumerate() {
-        //         println!(
-        //             "{cix},{rix} :{:?}",
-        //             c.leasts_by_dir
-        //                 .iter()
-        //                 // .map()
-        //                 .flatten()
-        //                 // .map(|v| v.iter()
-        //                 .filter_map(|v| *v) //.min())
-        //                                     // .collect::<Vec<Option<usize>>>()
-        //                                     // .collect::Vec<Option<usize>>>()
-        //         );
-        //     }
-        //     println!();
-        // }
-        // for (rix, r) in map.grid.inner.iter().enumerate() {
-        //     for (cix, c) in r.iter().enumerate() {
-        //         println!(
-        //             "{cix},{rix} :{:?}",
-        //             c.leasts_by_dir
-        //                 .iter()
-        //                 .flatten()
-        //                 .map(|v| v.unwrap_or(0))
-        //                 .collect::<Vec<usize>>()
-        //         );
-        //     }
-        //     println!();
-        // }
         let end_node: Node = *map
             .grid
             .get(end_location.1 as isize, end_location.0 as isize)
@@ -410,9 +313,6 @@ impl Solver for Solver17 {
             .map(|v| v.iter().skip(min_straight_line - 1).filter_map(|v| *v))
             .flatten()
             .min()
-            // .skip(min_straight_line)
-            // .filter_map(|v| *v)
-            // .min()
             .unwrap();
 
         (min).to_string()
@@ -442,20 +342,20 @@ mod tests {
 
     #[test]
     fn part2() {
-        //         let sample_input = "2413432311323
-        // 3215453535623
-        // 3255245654254
-        // 3446585845452
-        // 4546657867536
-        // 1438598798454
-        // 4457876987766
-        // 3637877979653
-        // 4654967986887
-        // 4564679986453
-        // 1224686865563
-        // 2546548887735
-        // 4322674655533";
-        //         assert_eq!(super::Solver17.part2(sample_input.lines()), "94");
+        let sample_input = "2413432311323
+3215453535623
+3255245654254
+3446585845452
+4546657867536
+1438598798454
+4457876987766
+3637877979653
+4654967986887
+4564679986453
+1224686865563
+2546548887735
+4322674655533";
+        assert_eq!(super::Solver17.part2(sample_input.lines()), "94");
 
         let sample_input_2 = "111111111111
 999999999991
@@ -463,5 +363,12 @@ mod tests {
 999999999991
 999999999991";
         assert_eq!(super::Solver17.part2(sample_input_2.lines()), "71");
+    }
+
+    #[test]
+    fn test_actual() {
+        let input = include_str!("input.txt");
+        assert_eq!(super::Solver17.part1(input.lines()), "758");
+        assert_eq!(super::Solver17.part2(input.lines()), "892");
     }
 }
