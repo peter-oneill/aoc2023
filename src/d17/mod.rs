@@ -11,32 +11,27 @@ enum Direction {
     W,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct Node {
     x: isize,
     y: isize,
     heat_loss: usize,
-    leasts_by_dir: [[Option<usize>; 10]; 4],
-    visited_by_dir: [[bool; 10]; 4],
-    weight: Option<usize>,
+    leasts_by_dir: Vec<Vec<Option<usize>>>,
 }
 
 impl Node {
-    fn new(x: usize, y: usize, heat_loss: char) -> Self {
+    fn new(x: usize, y: usize, heat_loss: char, max_steps: usize) -> Self {
         Self {
             x: x as isize,
             y: y as isize,
             heat_loss: heat_loss.to_digit(10).unwrap() as usize,
-            leasts_by_dir: [[None; 10]; 4],
-            visited_by_dir: [[false; 10]; 4],
-            weight: None,
+            leasts_by_dir: vec![vec![None; max_steps]; 4],
         }
     }
 
     fn make_start_node(&mut self) {
-        self.weight = Some(0);
-        self.leasts_by_dir = [[Some(0); 10]; 4];
-        self.visited_by_dir = [[true; 10]; 4];
+        self.leasts_by_dir = vec![vec![Some(0); self.leasts_by_dir[0].len()]; 4];
+        // self.visited_by_dir = [[true; 10]; 4];
     }
 
     fn update_cost(
@@ -56,38 +51,12 @@ impl Node {
 
         leasts[conseq_steps] = Some(heat_loss);
 
-        if !self.weight.is_some_and(|w| w <= heat_loss) {
-            // This is a cheaper path for the next round of node selection.
-            search_nodes.add(heat_loss, (self.x, self.y));
-            self.weight = Some(heat_loss);
-        }
-    }
-
-    fn min_heat_loss(
-        &self,
-        dir1: Direction,
-        dir2: Direction,
-        min_straight_line: usize,
-        max_straight_line: usize,
-    ) -> Option<usize> {
-        let a = self.leasts_by_dir[dir1 as usize][min_straight_line - 1..max_straight_line]
-            .iter()
-            .filter_map(|v| *v)
-            .min();
-        let b = self.leasts_by_dir[dir2 as usize][min_straight_line - 1..max_straight_line]
-            .iter()
-            .filter_map(|v| *v)
-            .min();
-
-        match (a, b) {
-            (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
-            (_, _) => a.or(b),
-        }
+        search_nodes.add(heat_loss, (self.x, self.y, direction, conseq_steps));
     }
 }
 
 struct OrderedMap {
-    map: Vec<Vec<(isize, isize)>>,
+    map: Vec<Vec<(isize, isize, Direction, usize)>>,
 }
 impl OrderedMap {
     fn new(s: usize) -> Self {
@@ -95,11 +64,11 @@ impl OrderedMap {
             map: vec![vec![]; s],
         }
     }
-    fn add(&mut self, key: usize, value: (isize, isize)) {
+    fn add(&mut self, key: usize, value: (isize, isize, Direction, usize)) {
         self.map[key].push(value);
     }
 
-    fn pop(&mut self) -> Option<(isize, isize)> {
+    fn pop(&mut self) -> Option<(isize, isize, Direction, usize)> {
         self.map
             .iter_mut()
             .find(|vec| !vec.is_empty())
@@ -126,19 +95,31 @@ impl Grid {
 }
 
 impl Map {
+    #[allow(dead_code)]
+    fn print(&self) {
+        for row in &self.grid.inner {
+            println!("Y: {} ", row[0].y);
+            for node in row {
+                println!(
+                    "X: {} {:?} ",
+                    node.x,
+                    node.leasts_by_dir
+                        .iter()
+                        .map(|v| v.iter().map(|v| v.unwrap_or(0)).collect::<Vec<usize>>())
+                        .collect::<Vec<Vec<usize>>>()
+                );
+            }
+            println!();
+        }
+    }
     fn solve_from_location(&mut self, x: isize, y: isize, end_location: (usize, usize)) -> usize {
-        self.search_nodes.add(0, (x, y));
+        self.search_nodes.add(0, (x, y, Direction::N, 0));
+        self.search_nodes.add(0, (x, y, Direction::E, 0));
 
         self.grid.get_mut(y, x).unwrap().make_start_node();
 
-        while let Some((x, y)) = self.search_nodes.pop() {
-            let current_node = self.grid.get_mut(y, x).unwrap();
-
-            if current_node.weight.is_none() {
-                continue;
-            }
-            current_node.weight = None;
-
+        while let Some((x, y, dir, steps)) = self.search_nodes.pop() {
+            let current_node = &self.grid.inner[y as usize][x as usize];
             if (x as usize, y as usize) == end_location {
                 if let Some(val) = current_node
                     .leasts_by_dir
@@ -152,93 +133,83 @@ impl Map {
 
             // Take of copy of the current node to use for values when updating surrounding nodes
             // Resolves ownership / multiple borrow issues
-            let current_node = self.grid.inner[y as usize][x as usize];
+            // Update each of the reachable nodes
+            let heat_loss =
+                self.grid.inner[y as usize][x as usize].leasts_by_dir[dir as usize][steps].unwrap();
 
-            // Update each of the surrounding nodes
-            let min_up_down = current_node.min_heat_loss(
-                Direction::N,
-                Direction::S,
-                self.min_straight_line,
-                self.max_straight_line,
-            );
-            let min_left_right = current_node.min_heat_loss(
-                Direction::W,
-                Direction::E,
-                self.min_straight_line,
-                self.max_straight_line,
-            );
+            match dir {
+                Direction::N | Direction::S => {
+                    let mut updated_heat_loss = heat_loss;
+                    for step_ix in 0..self.max_straight_line {
+                        if let Some(node) = self.grid.get_mut(y, x + step_ix as isize + 1) {
+                            if step_ix >= self.min_straight_line - 1 {
+                                node.update_cost(
+                                    updated_heat_loss,
+                                    Direction::E,
+                                    step_ix,
+                                    &mut self.search_nodes,
+                                );
+                            }
+                            updated_heat_loss += node.heat_loss;
+                        } else {
+                            break;
+                        }
+                    }
+                    let mut updated_heat_loss = heat_loss;
+                    for step_ix in 0..self.max_straight_line {
+                        if let Some(node) = self.grid.get_mut(y, x - step_ix as isize - 1) {
+                            if step_ix >= self.min_straight_line - 1 {
+                                node.update_cost(
+                                    updated_heat_loss,
+                                    Direction::W,
+                                    step_ix,
+                                    &mut self.search_nodes,
+                                );
+                            }
+                            updated_heat_loss += node.heat_loss;
+                        } else {
+                            break;
+                        }
+                    }
+                }
 
-            // N
-            if let Some(node) = self.grid.get_mut(y - 1, x) {
-                if let Some(heat_loss) = min_left_right {
-                    node.update_cost(heat_loss, Direction::N, 0, &mut self.search_nodes);
+                Direction::W | Direction::E => {
+                    let mut updated_heat_loss = heat_loss;
+                    for step_ix in 0..self.max_straight_line {
+                        if let Some(node) = self.grid.get_mut(y + step_ix as isize + 1, x) {
+                            if step_ix >= self.min_straight_line - 1 {
+                                node.update_cost(
+                                    updated_heat_loss,
+                                    Direction::S,
+                                    step_ix,
+                                    &mut self.search_nodes,
+                                );
+                            }
+                            updated_heat_loss += node.heat_loss;
+                        } else {
+                            break;
+                        }
+                    }
+                    let mut updated_heat_loss = heat_loss;
+                    for step_ix in 0..self.max_straight_line {
+                        if let Some(node) = self.grid.get_mut(y - step_ix as isize - 1, x) {
+                            if step_ix >= self.min_straight_line - 1 {
+                                node.update_cost(
+                                    updated_heat_loss,
+                                    Direction::N,
+                                    step_ix,
+                                    &mut self.search_nodes,
+                                );
+                            }
+                            updated_heat_loss += node.heat_loss;
+                        } else {
+                            break;
+                        }
+                    }
                 }
-                Self::continue_straight_line(
-                    current_node,
-                    node,
-                    Direction::N,
-                    &mut self.search_nodes,
-                    self.max_straight_line,
-                )
-            }
-            // S
-            if let Some(node) = self.grid.get_mut(y + 1, x) {
-                if let Some(heat_loss) = min_left_right {
-                    node.update_cost(heat_loss, Direction::S, 0, &mut self.search_nodes);
-                }
-                Self::continue_straight_line(
-                    current_node,
-                    node,
-                    Direction::S,
-                    &mut self.search_nodes,
-                    self.max_straight_line,
-                )
-            }
-            // W
-            if let Some(node) = self.grid.get_mut(y, x - 1) {
-                if let Some(heat_loss) = min_up_down {
-                    node.update_cost(heat_loss, Direction::W, 0, &mut self.search_nodes);
-                }
-                Self::continue_straight_line(
-                    current_node,
-                    node,
-                    Direction::W,
-                    &mut self.search_nodes,
-                    self.max_straight_line,
-                )
-            }
-            // E
-            if let Some(node) = self.grid.get_mut(y, x + 1) {
-                if let Some(heat_loss) = min_up_down {
-                    node.update_cost(heat_loss, Direction::E, 0, &mut self.search_nodes);
-                }
-                Self::continue_straight_line(
-                    current_node,
-                    node,
-                    Direction::E,
-                    &mut self.search_nodes,
-                    self.max_straight_line,
-                )
             }
         }
         panic!("No path found");
-    }
-
-    fn continue_straight_line(
-        // &self,
-        current_node: Node,
-        next_node: &mut Node,
-        dir: Direction,
-        search_nodes: &mut OrderedMap,
-        max_straight_line: usize,
-    ) {
-        for ii in 0..(max_straight_line - 1) {
-            if let Some(heat_loss) = current_node.leasts_by_dir[dir as usize][ii] {
-                if heat_loss > 0 {
-                    next_node.update_cost(heat_loss, dir, ii + 1, search_nodes);
-                }
-            }
-        }
     }
 }
 impl Solver for Solver17 {
@@ -251,7 +222,7 @@ impl Solver for Solver17 {
             .enumerate()
             .map(|(line_ix, line)| {
                 line.char_indices()
-                    .map(|(c_ix, c)| Node::new(c_ix, line_ix, c))
+                    .map(|(c_ix, c)| Node::new(c_ix, line_ix, c, 3))
                     .collect::<Vec<Node>>()
             })
             .collect::<Vec<Vec<Node>>>();
@@ -273,7 +244,7 @@ impl Solver for Solver17 {
             .enumerate()
             .map(|(line_ix, line)| {
                 line.char_indices()
-                    .map(|(c_ix, c)| Node::new(c_ix, line_ix, c))
+                    .map(|(c_ix, c)| Node::new(c_ix, line_ix, c, 10))
                     .collect::<Vec<Node>>()
             })
             .collect::<Vec<Vec<Node>>>();
