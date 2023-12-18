@@ -102,7 +102,7 @@ impl OrderedMap {
         self.map
             .iter_mut()
             .find(|(_, vec)| !vec.is_empty())
-            .and_then(|(key, vec)| vec.pop())
+            .and_then(|(_, vec)| vec.pop())
     }
 }
 struct Map {
@@ -122,21 +122,29 @@ impl Grid {
             .get_mut::<usize>(y.try_into().ok()?)?
             .get_mut::<usize>(x.try_into().ok()?)
     }
-
-    fn get(&mut self, y: isize, x: isize) -> Option<&Node> {
-        self.get_mut(y, x).map(|n| n as &Node)
-    }
 }
 
 impl Map {
-    fn solve_from_location(&mut self, x: isize, y: isize) {
+    fn solve_from_location(&mut self, x: isize, y: isize, end_location: (usize, usize)) -> usize {
         self.search_nodes.add_to_btreemap(0, (x, y));
 
         self.grid.get_mut(y, x).unwrap().make_start_node();
 
-        // let mut lit = 0;
         while let Some((x, y)) = self.search_nodes.pop_from_btreemap() {
             let current_node = self.grid.get_mut(y, x).unwrap();
+
+            if (x as usize, y as usize) == end_location {
+                if let Some(val) = current_node
+                    .leasts_by_dir
+                    .iter()
+                    .map(|v| v[self.min_straight_line - 1..].iter().filter_map(|v| *v))
+                    .flatten()
+                    .min()
+                {
+                    return val;
+                }
+            }
+
             if current_node.weight == None {
                 continue;
             }
@@ -214,6 +222,7 @@ impl Map {
                 )
             }
         }
+        panic!("No path found");
     }
 
     fn continue_straight_line(
@@ -259,21 +268,7 @@ impl Solver for Solver17 {
             max_straight_line: 3,
         };
 
-        map.solve_from_location(0, 0);
-        let end_node: Node = *map
-            .grid
-            .get(end_location.1 as isize, end_location.0 as isize)
-            .unwrap();
-
-        let min = end_node
-            .leasts_by_dir
-            .iter()
-            .flatten()
-            .filter_map(|v| *v)
-            .min()
-            .unwrap();
-
-        (min).to_string()
+        map.solve_from_location(0, 0, end_location).to_string()
     }
 
     fn part2(&self, input_lines: Lines) -> String {
@@ -300,22 +295,7 @@ impl Solver for Solver17 {
             max_straight_line,
         };
 
-        map.solve_from_location(0, 0);
-
-        let end_node: Node = *map
-            .grid
-            .get(end_location.1 as isize, end_location.0 as isize)
-            .unwrap();
-
-        let min = end_node
-            .leasts_by_dir
-            .iter()
-            .map(|v| v.iter().skip(min_straight_line - 1).filter_map(|v| *v))
-            .flatten()
-            .min()
-            .unwrap();
-
-        (min).to_string()
+        map.solve_from_location(0, 0, end_location).to_string()
     }
 }
 
