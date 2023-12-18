@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, str::Lines};
+use std::str::Lines;
 
 use crate::Solver;
 pub struct Solver17;
@@ -58,7 +58,7 @@ impl Node {
 
         if !self.weight.is_some_and(|w| w <= heat_loss) {
             // This is a cheaper path for the next round of node selection.
-            search_nodes.add_to_btreemap(heat_loss, (self.x, self.y));
+            search_nodes.add(heat_loss, (self.x, self.y));
             self.weight = Some(heat_loss);
         }
     }
@@ -87,22 +87,23 @@ impl Node {
 }
 
 struct OrderedMap {
-    map: BTreeMap<usize, Vec<(isize, isize)>>,
+    map: Vec<Vec<(isize, isize)>>,
 }
 impl OrderedMap {
-    fn add_to_btreemap(&mut self, key: usize, value: (isize, isize)) {
-        if let Some(vec) = self.map.get_mut(&key) {
-            vec.push(value);
-        } else {
-            self.map.insert(key, vec![value]);
+    fn new(s: usize) -> Self {
+        Self {
+            map: vec![vec![]; s],
         }
     }
+    fn add(&mut self, key: usize, value: (isize, isize)) {
+        self.map[key].push(value);
+    }
 
-    fn pop_from_btreemap(&mut self) -> Option<(isize, isize)> {
+    fn pop(&mut self) -> Option<(isize, isize)> {
         self.map
             .iter_mut()
-            .find(|(_, vec)| !vec.is_empty())
-            .and_then(|(_, vec)| vec.pop())
+            .find(|vec| !vec.is_empty())
+            .and_then(|vec| vec.pop())
     }
 }
 struct Map {
@@ -126,30 +127,28 @@ impl Grid {
 
 impl Map {
     fn solve_from_location(&mut self, x: isize, y: isize, end_location: (usize, usize)) -> usize {
-        self.search_nodes.add_to_btreemap(0, (x, y));
+        self.search_nodes.add(0, (x, y));
 
         self.grid.get_mut(y, x).unwrap().make_start_node();
 
-        while let Some((x, y)) = self.search_nodes.pop_from_btreemap() {
+        while let Some((x, y)) = self.search_nodes.pop() {
             let current_node = self.grid.get_mut(y, x).unwrap();
+
+            if current_node.weight.is_none() {
+                continue;
+            }
+            current_node.weight = None;
 
             if (x as usize, y as usize) == end_location {
                 if let Some(val) = current_node
                     .leasts_by_dir
                     .iter()
-                    .map(|v| v[self.min_straight_line - 1..].iter().filter_map(|v| *v))
-                    .flatten()
+                    .flat_map(|v| v[self.min_straight_line - 1..].iter().filter_map(|v| *v))
                     .min()
                 {
                     return val;
                 }
             }
-
-            if current_node.weight == None {
-                continue;
-            }
-
-            current_node.weight = None;
 
             // Take of copy of the current node to use for values when updating surrounding nodes
             // Resolves ownership / multiple borrow issues
@@ -261,9 +260,7 @@ impl Solver for Solver17 {
 
         let mut map = Map {
             grid: Grid { inner: inner_grid },
-            search_nodes: OrderedMap {
-                map: BTreeMap::new(),
-            },
+            search_nodes: OrderedMap::new((end_location.0 + 1) * (end_location.1 + 1) * 10),
             min_straight_line: 1,
             max_straight_line: 3,
         };
@@ -288,13 +285,10 @@ impl Solver for Solver17 {
 
         let mut map = Map {
             grid: Grid { inner: inner_grid },
-            search_nodes: OrderedMap {
-                map: BTreeMap::new(),
-            },
+            search_nodes: OrderedMap::new((end_location.0 + 1) * (end_location.1 + 1) * 10),
             min_straight_line,
             max_straight_line,
         };
-
         map.solve_from_location(0, 0, end_location).to_string()
     }
 }
