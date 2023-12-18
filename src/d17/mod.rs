@@ -31,7 +31,6 @@ impl Node {
 
     fn make_start_node(&mut self) {
         self.leasts_by_dir = vec![vec![Some(0); self.leasts_by_dir[0].len()]; 4];
-        // self.visited_by_dir = [[true; 10]; 4];
     }
 
     fn update_cost(
@@ -140,71 +139,72 @@ impl Map {
             match dir {
                 Direction::N | Direction::S => {
                     let mut updated_heat_loss = heat_loss;
-                    for step_ix in 0..self.max_straight_line {
-                        if let Some(node) = self.grid.get_mut(y, x + step_ix as isize + 1) {
-                            if step_ix >= self.min_straight_line - 1 {
-                                node.update_cost(
-                                    updated_heat_loss,
-                                    Direction::E,
-                                    step_ix,
-                                    &mut self.search_nodes,
-                                );
-                            }
-                            updated_heat_loss += node.heat_loss;
-                        } else {
-                            break;
+                    for step_ix in 0..std::cmp::min(
+                        self.max_straight_line,
+                        self.grid.inner[0].len() - x as usize - 1,
+                    ) {
+                        let node =
+                            &mut self.grid.inner[y as usize][(x + step_ix as isize + 1) as usize];
+                        if step_ix >= self.min_straight_line - 1 {
+                            node.update_cost(
+                                updated_heat_loss,
+                                Direction::E,
+                                step_ix,
+                                &mut self.search_nodes,
+                            );
                         }
+                        updated_heat_loss += node.heat_loss;
                     }
                     let mut updated_heat_loss = heat_loss;
-                    for step_ix in 0..self.max_straight_line {
-                        if let Some(node) = self.grid.get_mut(y, x - step_ix as isize - 1) {
-                            if step_ix >= self.min_straight_line - 1 {
-                                node.update_cost(
-                                    updated_heat_loss,
-                                    Direction::W,
-                                    step_ix,
-                                    &mut self.search_nodes,
-                                );
-                            }
-                            updated_heat_loss += node.heat_loss;
-                        } else {
-                            break;
+                    for step_ix in 0..std::cmp::min(self.max_straight_line, x as usize) {
+                        let node =
+                            &mut self.grid.inner[y as usize][(x - step_ix as isize - 1) as usize];
+
+                        // if let Some(node) = self.grid.get_mut(y, x - step_ix as isize - 1) {
+                        if step_ix >= self.min_straight_line - 1 {
+                            node.update_cost(
+                                updated_heat_loss,
+                                Direction::W,
+                                step_ix,
+                                &mut self.search_nodes,
+                            );
                         }
+                        updated_heat_loss += node.heat_loss;
                     }
                 }
 
                 Direction::W | Direction::E => {
                     let mut updated_heat_loss = heat_loss;
-                    for step_ix in 0..self.max_straight_line {
-                        if let Some(node) = self.grid.get_mut(y + step_ix as isize + 1, x) {
-                            if step_ix >= self.min_straight_line - 1 {
-                                node.update_cost(
-                                    updated_heat_loss,
-                                    Direction::S,
-                                    step_ix,
-                                    &mut self.search_nodes,
-                                );
-                            }
-                            updated_heat_loss += node.heat_loss;
-                        } else {
-                            break;
+                    for step_ix in 0..std::cmp::min(
+                        self.max_straight_line,
+                        self.grid.inner.len() - y as usize - 1,
+                    ) {
+                        let node =
+                            &mut self.grid.inner[(y + step_ix as isize + 1) as usize][x as usize];
+                        if step_ix >= self.min_straight_line - 1 {
+                            node.update_cost(
+                                updated_heat_loss,
+                                Direction::S,
+                                step_ix,
+                                &mut self.search_nodes,
+                            );
                         }
+                        updated_heat_loss += node.heat_loss;
                     }
                     let mut updated_heat_loss = heat_loss;
-                    for step_ix in 0..self.max_straight_line {
-                        if let Some(node) = self.grid.get_mut(y - step_ix as isize - 1, x) {
-                            if step_ix >= self.min_straight_line - 1 {
-                                node.update_cost(
-                                    updated_heat_loss,
-                                    Direction::N,
-                                    step_ix,
-                                    &mut self.search_nodes,
-                                );
-                            }
-                            updated_heat_loss += node.heat_loss;
-                        } else {
-                            break;
+                    for step_ix in 0..std::cmp::min(self.max_straight_line, y as usize) {
+                        let node =
+                            &mut self.grid.inner[(y - step_ix as isize - 1) as usize][x as usize];
+
+                        if step_ix >= self.min_straight_line - 1 {
+                            node.update_cost(
+                                updated_heat_loss,
+                                Direction::N,
+                                step_ix,
+                                &mut self.search_nodes,
+                            );
                         }
+                        updated_heat_loss += node.heat_loss;
                     }
                 }
             }
