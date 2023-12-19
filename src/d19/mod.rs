@@ -1,6 +1,8 @@
 use core::panic;
 use std::{collections::HashMap, str::Lines};
 
+use itertools::Itertools;
+
 use crate::Solver;
 pub struct Solver19;
 
@@ -13,37 +15,48 @@ enum RuleResult {
 }
 #[derive(Debug, Clone, Copy)]
 struct Part {
-    x: usize,
-    m: usize,
-    a: usize,
-    s: usize,
+    x: Range,
+    m: Range,
+    a: Range,
+    s: Range,
 }
 
-fn accept<T>(_: T) -> RuleResult {
-    RuleResult::Accept
+#[derive(Debug, Clone, Copy)]
+struct Range {
+    min: usize,
+    max: usize,
 }
 
-fn reject<T>(_: T) -> RuleResult {
-    RuleResult::Reject
+fn attr_x(val: &mut Part) -> &mut Range {
+    &mut val.x
+}
+
+fn attr_m(val: &mut Part) -> &mut Range {
+    &mut val.m
+}
+
+fn attr_a(val: &mut Part) -> &mut Range {
+    &mut val.a
+}
+
+fn attr_s(val: &mut Part) -> &mut Range {
+    &mut val.s
 }
 
 fn build_compare_func(
     rule: Vec<char>,
-    // attribute: char,
-    comparitor: for<'a, 'b> fn(&'a usize, &'b usize) -> bool,
-    // cmp_val: usize,
-    // dest: String,
-) -> Box<dyn Fn(Part) -> RuleResult> {
+    // comparitor: for<'a, 'b> fn(&'a usize, &'b usize) -> bool,
+) -> Box<dyn Fn(Part) -> Vec<(Part, RuleResult)>> {
     let rulestring = rule[2..].iter().collect::<String>();
     let (cmp_val, dest) = rulestring.split_once(':').unwrap();
     let dest = dest.to_string();
     let cmp_val = cmp_val.parse::<usize>().unwrap();
 
     let attribute = match rule[0] {
-        'x' => |val: Part| val.x,
-        'm' => |val: Part| val.m,
-        'a' => |val: Part| val.a,
-        's' => |val: Part| val.s,
+        'x' => Box::new(&attr_x) as Box<dyn Fn(&mut Part) -> &mut Range>,
+        'm' => Box::new(&attr_m) as Box<dyn Fn(&mut Part) -> &mut Range>,
+        'a' => Box::new(&attr_a) as Box<dyn Fn(&mut Part) -> &mut Range>,
+        's' => Box::new(&attr_s) as Box<dyn Fn(&mut Part) -> &mut Range>,
         _ => {
             panic!("Unknown attribute {}", rule[0])
         }
@@ -54,13 +67,45 @@ fn build_compare_func(
         "A" => RuleResult::Accept,
         _ => RuleResult::NewRule(dest.clone()),
     };
-    Box::new(move |val| {
-        if comparitor(&attribute(val), &cmp_val) {
-            action.clone()
-        } else {
-            RuleResult::Pass
+
+    match rule[1] {
+        '>' => Box::new(move |mut val| {
+            if cmp_val >= attribute(&mut val).max {
+                vec![(val, RuleResult::Pass)]
+            } else if cmp_val < attribute(&mut val).min {
+                vec![(val, action.clone())]
+            } else {
+                // split the range
+                let mut passing = val.clone();
+                let mut failing = val.clone();
+                attribute(&mut passing).min = cmp_val + 1;
+                attribute(&mut failing).max = cmp_val;
+                vec![(passing, action.clone()), (failing, RuleResult::Pass)]
+            }
+        }),
+        '<' => Box::new(move |mut val| {
+            if cmp_val <= attribute(&mut val).min {
+                vec![(val, RuleResult::Pass)]
+            } else if cmp_val > attribute(&mut val).max {
+                vec![(val, action.clone())]
+            } else {
+                // split the range
+                let mut passing = val.clone();
+                let mut failing = val.clone();
+                attribute(&mut passing).max = cmp_val - 1;
+                attribute(&mut failing).min = cmp_val;
+                vec![(passing, action.clone()), (failing, RuleResult::Pass)]
+            }
+        }),
+
+        _ => {
+            panic!("Unknown comparitor {}", rule[1])
         }
-    }) as Box<dyn Fn(_) -> RuleResult>
+    }
+}
+
+fn build_basic_func(res: RuleResult) -> Box<dyn Fn(Part) -> Vec<(Part, RuleResult)>> {
+    Box::new(move |p| vec![(p, res.clone())])
 }
 
 impl Solver for Solver19 {
@@ -69,133 +114,135 @@ impl Solver for Solver19 {
     }
 
     fn part1(&self, mut input_lines: Lines) -> String {
-        let mut rules = HashMap::new();
-        while let Some(line) = input_lines.next() {
-            if line.is_empty() {
-                break;
-            }
-            let (key, workflow) = line.split_once("{").unwrap();
-            let mut workflow_vec = vec![];
+        let rules = build_rules(&mut input_lines);
 
-            for rule in workflow.trim_end_matches('}').split(',') {
-                let rule: Vec<char> = rule.chars().collect();
-                let rule = match rule[0] {
-                    'R' => Box::new(reject) as Box<dyn Fn(_) -> RuleResult>,
-                    'A' => Box::new(accept) as Box<dyn Fn(_) -> RuleResult>,
-                    _ => match rule[1] {
-                        '>' => build_compare_func(rule, usize::gt),
-                        '<' => build_compare_func(rule, usize::lt),
-                        _ => {
-                            Box::new(move |_| RuleResult::NewRule(rule.iter().collect::<String>()))
-                        }
-                    },
+        let parts = input_lines
+            .map(|line| {
+                let attributes = line.split(',').map(|part| {
+                    let (_, val) = part
+                        .trim_matches(|c| c == '{' || c == '}')
+                        .split_once('=')
+                        .unwrap();
+                    val.parse::<usize>().unwrap()
+                });
+                let (x, m, a, s) = attributes.collect_tuple().unwrap();
+                let part = Part {
+                    x: Range { min: x, max: x },
+                    m: Range { min: m, max: m },
+                    a: Range { min: a, max: a },
+                    s: Range { min: s, max: s },
                 };
-                workflow_vec.push(rule);
-            }
 
-            rules.insert(key.to_string(), workflow_vec);
-        }
+                (part, "in".to_string())
+            })
+            .collect_vec();
 
-        let mut parts = vec![];
-
-        while let Some(line) = input_lines.next() {
-            // Now handling values
-            let mut attributes = line.split(',').map(|part| {
-                let (_, val) = part
-                    .trim_matches(|c| c == '{' || c == '}')
-                    .split_once('=')
-                    .unwrap();
-                val.parse::<usize>().unwrap()
-            });
-            let part = Part {
-                x: attributes.next().unwrap(),
-                m: attributes.next().unwrap(),
-                a: attributes.next().unwrap(),
-                s: attributes.next().unwrap(),
-            };
-
-            // let mut result = RuleResult::Pass;
-            parts.push(part);
-        }
-
-        parts
+        let accepted_ranges = apply_rules(rules, parts);
+        accepted_ranges
             .iter()
-            .map(|part| apply_rules(&rules, part))
+            .map(|p| (p.x.max + p.m.max + p.a.max + p.s.max))
             .sum::<usize>()
             .to_string()
     }
 
     fn part2(&self, mut input_lines: Lines) -> String {
-        let mut rules = HashMap::new();
-        while let Some(line) = input_lines.next() {
-            if line.is_empty() {
-                break;
-            }
-            let (key, workflow) = line.split_once("{").unwrap();
-            let mut workflow_vec = vec![];
+        let rules = build_rules(&mut input_lines);
 
-            for rule in workflow.trim_end_matches('}').split(',') {
-                let rule: Vec<char> = rule.chars().collect();
-                let rule = match rule[0] {
-                    'R' => Box::new(reject) as Box<dyn Fn(_) -> RuleResult>,
-                    'A' => Box::new(accept) as Box<dyn Fn(_) -> RuleResult>,
-                    _ => match rule[1] {
-                        '>' => build_compare_func(rule, usize::gt),
-                        '<' => build_compare_func(rule, usize::lt),
-                        _ => {
-                            Box::new(move |_| RuleResult::NewRule(rule.iter().collect::<String>()))
-                        }
-                    },
-                };
-                workflow_vec.push(rule);
-            }
+        let parts = vec![(
+            Part {
+                x: Range { min: 1, max: 4000 },
+                m: Range { min: 1, max: 4000 },
+                a: Range { min: 1, max: 4000 },
+                s: Range { min: 1, max: 4000 },
+            },
+            "in".to_string(),
+        )];
 
-            rules.insert(key.to_string(), workflow_vec);
-        }
-
-        let mut parts = vec![];
-
-        parts
+        let accepted_ranges = apply_rules(rules, parts);
+        accepted_ranges
             .iter()
-            .map(|part| apply_rules(&rules, part))
-            .sum::<usize>()
+            .map(|p| {
+                (p.x.max - p.x.min + 1) as u64
+                    * (p.m.max - p.m.min + 1) as u64
+                    * (p.a.max - p.a.min + 1) as u64
+                    * (p.s.max - p.s.min + 1) as u64
+            })
+            .sum::<u64>()
             .to_string()
     }
 }
 
 fn apply_rules(
-    rules: &HashMap<String, Vec<Box<dyn Fn(Part) -> RuleResult>>>,
-    part: &Part,
-) -> usize {
-    let mut current_rule = "in".to_string();
+    rules: HashMap<String, Vec<Box<dyn Fn(Part) -> Vec<(Part, RuleResult)>>>>,
+    mut parts: Vec<(Part, String)>,
+) -> Vec<Part> {
+    let mut accepted_parts = vec![];
 
-    loop {
-        let workflow = rules.get(&current_rule).unwrap();
-
-        let mut new_rule = None;
+    while let Some((mut part, rule_name)) = parts.pop() {
+        // match action {
+        // RuleResult::NewRule(rule) => {
+        let workflow = rules.get(&rule_name).unwrap();
         for rule in workflow {
-            match rule(*part) {
-                RuleResult::Accept => {
-                    return part.x + part.m + part.a + part.s;
-                }
-                RuleResult::Reject => {
-                    return 0;
-                }
-                RuleResult::Pass => {}
-                RuleResult::NewRule(rule) => {
-                    new_rule = Some(rule);
-                    break;
-                }
+            let rule_output = rule(part);
+            if let Some(p) = rule_output
+                .into_iter()
+                .filter_map(|(part, action)| match action {
+                    RuleResult::Pass => Some(part),
+                    RuleResult::Accept => {
+                        accepted_parts.push(part);
+                        None
+                    }
+                    RuleResult::NewRule(r) => {
+                        parts.push((part, r));
+                        None
+                    }
+                    RuleResult::Reject => None,
+                })
+                .collect::<Vec<Part>>()
+                .get(0)
+            {
+                part = *p;
+            } else {
+                break;
             }
         }
-        if let Some(rule) = new_rule {
-            current_rule = rule;
-        } else {
-            return 0;
-        }
     }
+    // _ => panic!("Unexpected action {:?} for part {:?}", action, part),
+    // }
+
+    accepted_parts
 }
 
+fn build_rules(
+    input_lines: &mut Lines,
+) -> HashMap<String, Vec<Box<dyn Fn(Part) -> Vec<(Part, RuleResult)>>>> {
+    let mut rules = HashMap::new();
+    while let Some(line) = input_lines.next() {
+        if line.is_empty() {
+            break;
+        }
+        let (key, workflow) = line.split_once("{").unwrap();
+        let mut workflow_vec = vec![];
+
+        for rule in workflow.trim_end_matches('}').split(',') {
+            let rule: Vec<char> = rule.chars().collect();
+            let rule = match rule[0] {
+                'R' => build_basic_func(RuleResult::Reject),
+                'A' => build_basic_func(RuleResult::Accept),
+                _ => match rule[1] {
+                    '>' | '<' => build_compare_func(rule),
+                    _ => Box::new(move |p| {
+                        vec![(p, RuleResult::NewRule(rule.iter().collect::<String>()))]
+                    }) as Box<dyn Fn(_) -> Vec<(Part, RuleResult)>>,
+                },
+            };
+            workflow_vec.push(rule);
+        }
+
+        rules.insert(key.to_string(), workflow_vec);
+    }
+    rules
+}
 #[cfg(test)]
 mod tests {
     use crate::Solver;
